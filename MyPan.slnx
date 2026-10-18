@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MyPan.Client/MyPan.Client.csproj" />
+    <Project Path="src/MyPan.Contracts/MyPan.Contracts.csproj" />
+    <Project Path="src/MyPan.Sync/MyPan.Sync.csproj" />
+    <Project Path="src/MyPan.SmbGateway/MyPan.SmbGateway.csproj" />
+    <Project Path="src/MyPan.Desktop/MyPan.Desktop.csproj" />
+    <Project Path="src/MyPan.Headless/MyPan.Headless.csproj" />
+    <Project Path="src/MyPan.Server/MyPan.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MyPan.PerformanceTests/MyPan.PerformanceTests.csproj" />
+    <Project Path="tests/MyPan.StoreTests/MyPan.StoreTests.csproj" />
+    <Project Path="tests/MyPan.Tests/MyPan.Tests.csproj" />
+    <Project Path="tests/MyPan.V2Tests/MyPan.V2Tests.csproj" />
+  </Folder>
+</Solution>

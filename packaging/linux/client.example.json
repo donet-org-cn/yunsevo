@@ -1,0 +1,6 @@
+{
+  "server": "https://cloud.example.com",
+  "username": "alice",
+  "remoteDirectory": "个人/alice",
+  "syncRoot": "/home/alice/MyPanFiles"
+}

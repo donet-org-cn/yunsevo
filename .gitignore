@@ -1,0 +1,34 @@
+**/bin/
+**/obj/
+.vs/
+artifacts/
+.test-data/
+data/
+*.user
+client.local.json
+api-key.txt
+
+# Local configuration, credentials, and installation state
+.env
+.env.*
+!.env.example
+server-settings.json
+setup-code.txt
+accounts.bin
+credentials/
+*.local.json
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Local tooling and diagnostic output
+.idea/
+.codex/
+.agents/
+TestResults/
+*.log
+*.dmp
+*.tmp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>初始化安装 · 沄序文件云</title><link rel="stylesheet" href="/assets/app.css"><script src="/assets/setup.js" defer></script></head>
+<body class="setup-body">
+  <main class="setup-shell">
+    <aside class="setup-intro"><a href="/" class="brand"><span class="brand-mark">沄</span>沄序 <span class="brand-tag">YUNSEVO</span></a><div><p class="eyebrow">WELCOME TO YUNSEVO</p><h1>从这里，<br>建立你的文件空间。</h1><p>设置管理员和文件存储位置。<br>完成后即可登录、上传文件并连接客户端。</p></div><ol class="setup-steps"><li class="current" id="step-verify">01　验证安装权限</li><li id="step-configure">02　设置账号与存储</li><li id="step-finish">03　开始使用</li></ol></aside>
+    <section class="setup-content">
+      <form id="setup-verify"><p class="eyebrow">首次安装 · 1 / 2</p><h2>确认你是服务器管理员</h2><p class="muted">打开服务端程序目录中的 <code>setup-code.txt</code>，复制安装码。安装码只用于本次初始化。</p><label for="setup-code">安装码</label><input id="setup-code" type="password" autocomplete="off" required maxlength="128" placeholder="粘贴 setup-code.txt 中的安装码"><button class="primary" type="submit">验证并继续 →</button></form>
+      <form id="setup-configure" hidden><p class="eyebrow">首次安装 · 2 / 2</p><h2>设置你的文件云</h2><p class="muted">这些账号信息将用于管理网页和客户端登录。</p><div class="setup-fields"><label for="setup-username">管理员用户名</label><input id="setup-username" autocomplete="username" value="admin" required minlength="3" maxlength="64" pattern="[A-Za-z0-9._\-]+"><label for="setup-password">密码</label><input id="setup-password" type="password" autocomplete="new-password" required minlength="12" maxlength="256" placeholder="至少 12 个字符"><label for="setup-confirm">确认密码</label><input id="setup-confirm" type="password" autocomplete="new-password" required minlength="12" maxlength="256"><label for="setup-path">文件保存路径</label><input id="setup-path" required spellcheck="false" autocomplete="off"><p class="field-help">填写服务端磁盘上的空文件夹绝对路径。文件、历史版本和回收站都会保存在这里；请预留足够空间。</p></div><button class="primary" type="submit">完成安装并启动服务</button></form>
+      <div id="setup-finish" hidden><span class="setup-check" aria-hidden="true">✓</span><p class="eyebrow">安装完成</p><h2>你的文件云已准备就绪</h2><p class="muted" id="setup-ready">正在启动服务，即将进入登录页面…</p><a class="primary" href="/" id="setup-login" hidden>前往登录</a></div>
+      <p class="form-error" id="setup-error" role="alert" hidden></p><p class="setup-footer">沄序文件云 · 文件有序，协作从容</p>
+    </section>
+  </main>
+</body></html>

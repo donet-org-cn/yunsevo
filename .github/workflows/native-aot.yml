@@ -1,0 +1,47 @@
+name: Native AOT packages
+on: [workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-2022, rid: win-x64 }
+          - { os: ubuntu-24.04, rid: linux-x64 }
+          - { os: ubuntu-24.04-arm, rid: linux-arm64 }
+          - { os: macos-15, rid: osx-arm64 }
+          - { os: macos-15-intel, rid: osx-x64 }
+    runs-on: ${{ matrix.os }}
+    env:
+      AVALONIA_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.402'
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev libicu-dev libfontconfig1 libx11-6 libice6 libsm6 libxrandr2 libxcursor1 libxi6
+      - name: Publish native host packages
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/publish.ps1 -Runtime '${{ matrix.rid }}' -Output 'artifacts/v2/${{ matrix.rid }}'
+      - name: Publish Unix native host packages
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash scripts/publish.sh '${{ matrix.rid }}' 'artifacts/v2/${{ matrix.rid }}'
+      - name: Archive Unix packages with executable permissions
+        if: runner.os != 'Windows'
+        run: tar -czf 'artifacts/MyPan-${{ matrix.rid }}.tar.gz' -C 'artifacts/v2/${{ matrix.rid }}' .
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: MyPan-${{ matrix.rid }}
+          path: artifacts/v2/${{ matrix.rid }}/
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'Windows'
+        with:
+          name: MyPan-${{ matrix.rid }}
+          path: artifacts/MyPan-${{ matrix.rid }}.tar.gz

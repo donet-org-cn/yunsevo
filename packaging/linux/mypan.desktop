@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Yunsevo Drive
+Name[zh_CN]=沄序 Drive
+Comment=Cloud files and bidirectional sync
+Exec=/opt/mypan/desktop/MyPan.Desktop
+Icon=folder-remote
+Terminal=false
+Categories=Network;FileTransfer;
+StartupWMClass=MyPan.Desktop
