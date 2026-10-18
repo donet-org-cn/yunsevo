@@ -37,9 +37,30 @@ public sealed class ReconstructionService : Service
                     try { File.Copy(ScanStore.Model(id), backup + ".partial"); File.Move(backup + ".partial", backup); previousModel = backup; File.Delete(ScanStore.Model(id)); }
                     finally { if (File.Exists(backup + ".partial")) File.Delete(backup + ".partial"); }
                 }
+                bool Cancelled() => cancel || AppServices.Client.AccountKey != value.Account || System.Environment.TickCount64 - started > (value.Quality > 0 ? 90 : 30) * 60 * 1000L;
+                if (value.Quality == 2)
+                {
+                    var models = Path.Combine(FilesDir!.AbsolutePath, "reconstruction-masks", LocalForeground.Models[0].Hash[..12]); Directory.CreateDirectory(models);
+                    foreach (var model in LocalForeground.Models)
+                    {
+                        var destination = Path.Combine(models, model.Name);
+                        if (!File.Exists(destination))
+                        {
+                            using var source = Assets!.Open("reconstruction-masks/" + model.Name);
+                            using (var target = File.Create(destination + ".partial")) source.CopyTo(target);
+                            File.Move(destination + ".partial", destination, true);
+                        }
+                    }
+                    LocalForeground.Generate(ScanStore.Files(id), models, Path.Combine(ScanStore.Photos(id), ".foreground"), (percent, message) =>
+                    {
+                        ScanStore.Edit(id, x => x with { Progress = percent, Message = message });
+                        ((NotificationManager)GetSystemService(NotificationService)!).Notify(NotificationId, Notification(message));
+                    }, Cancelled);
+                }
                 ReconstructionNative.Generate(id, value.Backend, (_, percent, text) =>
                 {
-                    if (cancel || AppServices.Client.AccountKey != value.Account || System.Environment.TickCount64 - started > (value.Quality == 1 ? 60 : 30) * 60 * 1000L) return 1;
+                    if (Cancelled()) return 1;
+                    if (value.Quality == 2) percent = 25 + percent * 75 / 100;
                     try
                     {
                     if (percent != last && System.Environment.TickCount64 - updated > 500)
@@ -52,7 +73,7 @@ public sealed class ReconstructionService : Service
                     }
                     catch (Exception) { return 1; }
                 });
-                ScanStore.Edit(id, x => x with { State = "ready", ModelUpload = null, Progress = 100, Message = "本机模型已生成，已保留可用原图贴图，可预览或上传云端。" });
+                ScanStore.Edit(id, x => x with { State = "ready", ModelUpload = null, Progress = 100, Message = value.Quality == 2 ? "本机轮廓外形已生成，贴图来自原片。未拍到的内凹和底部细节不是实测结果。" : "本机模型已生成，已保留可用原图贴图，可预览或上传云端。" });
             }
             catch (Exception ex) { try { if (previousModel != null && File.Exists(previousModel)) File.Copy(previousModel, ScanStore.Model(id), true); ScanStore.Edit(id, x => x with { State = "failed", Message = ex.Message == "CANCELLED" ? "已停止，原始照片已保留。" : ex.Message }); } catch (Exception) { } }
             finally

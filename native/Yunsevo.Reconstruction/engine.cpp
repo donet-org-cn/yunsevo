@@ -47,7 +47,7 @@ static double focal35mm(const std::vector<unsigned char>& bytes){
 }
 
 static std::string safe(std::string x){for(auto&c:x)if(c=='"'||c=='\\'||(unsigned char)c<32)c=' ';return x;}
-struct Camera{fs::path source;cv::Rect photoRect;int sourceSide=0;Mat color,gray,desc;std::vector<cv::KeyPoint> features;Matx33d R=Matx33d::eye();Vec3d t{0,0,0};bool registered=false;int offset=0;};
+struct Camera{fs::path source;cv::Rect photoRect;int sourceSide=0;Mat color,gray,desc,foreground;std::vector<cv::KeyPoint> features;Matx33d R=Matx33d::eye();Vec3d t{0,0,0};bool registered=false;int offset=0;};
 struct Track{std::map<int,int> observations;Point3d point;bool good=false;};
 struct Pair{int a,b;std::vector<cv::DMatch> matches;Mat R,t;double score=0;};
 struct Progress{YvProgress callback;void*user;std::shared_ptr<int> maximum=std::make_shared<int>(0);void operator()(int n,const std::string&s){n=std::max(n,*maximum);*maximum=n;if(callback&&callback(user,n,s.c_str()))throw std::runtime_error("CANCELLED");}};
@@ -70,7 +70,7 @@ static bool triangulate(Track&track,const std::vector<Camera>&cs,double f,double
 }
 #include "bundle_adjustment.h"
 #include "resection.h"
-static std::vector<Track> sfm(std::vector<Camera>&cs,double& f,bool estimateFocal,bool object,Progress report){
+static std::vector<Track> sfm(std::vector<Camera>&cs,double& f,bool estimateFocal,bool object,Progress report,int finalIterations=15){
  int count=(int)cs.size(),total=0;const double mid=cs[0].gray.cols*.5;
  auto sift=cv::SIFT::create(6000);cv::setNumThreads(2);
  for(int i=0;i<count;i++){cs[i].offset=total;Mat mask=Mat::zeros(cs[i].gray.size(),CV_8U);auto rect=cs[i].photoRect;if(object){int dx=rect.width/12,dy=rect.height/40;rect=cv::Rect(rect.x+dx,rect.y+dy,rect.width-2*dx,rect.height-2*dy);}mask(rect).setTo(255);sift->detectAndCompute(cs[i].gray,mask,cs[i].features,cs[i].desc);total+=(int)cs[i].features.size();report(3+10*i/count,"features "+std::to_string(i+1)+"/"+std::to_string(count));}
@@ -139,7 +139,7 @@ static std::vector<Track> sfm(std::vector<Camera>&cs,double& f,bool estimateFoca
  cs=std::move(bestCameras);auto tracks=std::move(bestTracks);f=bestFocal;
  // Anchor the strongest baseline in the selected reconstruction, then refine all poses jointly.
  int anchor=-1,baseline=-1;for(int i=0;i<count;i++)if(cs[i].registered){if(anchor<0)anchor=i;else if(baseline<0)baseline=i;}
- bundleAdjust(cs,tracks,f,anchor,baseline,estimateFocal,report,15);
+ bundleAdjust(cs,tracks,f,anchor,baseline,estimateFocal,report,finalIterations);
  for(auto&tr:tracks)if(tr.good){int support=0;for(auto it=tr.observations.begin();it!=tr.observations.end();){auto[i,k]=*it;if(cs[i].registered){if(reprojection(cs[i],tr.point,cs[i].features[k].pt,f,mid)>4){it=tr.observations.erase(it);continue;}support++;}++it;}tr.good=support>=2;}
  return tracks;
 }
@@ -202,20 +202,23 @@ static void fuse(const Vec3d* objectCenter,double objectRadius,const std::vector
  std::vector<Vertex> compact;std::vector<uint32_t> remap(vertices.size(),UINT32_MAX);for(auto&id:indices){if(remap[id]==UINT32_MAX){remap[id]=(uint32_t)compact.size();compact.push_back(vertices[id]);}id=remap[id];}vertices.swap(compact);
 }
 #include "texture_mesh.h"
+#include "segmentation_image.h"
+#include "silhouette_mesh.h"
 const char* yv_last_error(){return errorText.c_str();}
 const char* yv_capabilities(){try{VulkanDepth vk;capabilities="{\"cpu\":true,\"vulkan\":true,\"device\":\""+safe(vk.name())+"\",\"experimental\":true}";}catch(const std::exception&e){capabilities="{\"cpu\":true,\"vulkan\":false,\"reason\":\""+safe(e.what())+"\",\"experimental\":true}";}return capabilities.c_str();}
 int yv_reconstruct(const char*input,const char*output,const char*requested,int quality,YvProgress callback,void*user){return yv_reconstruct_v2(input,output,requested,quality,"object",callback,user);}
 int yv_reconstruct_v2(const char*input,const char*output,const char*requested,int quality,const char*subject,YvProgress callback,void*user){
  errorText.clear();try{
-  if(quality<0||quality>1)throw std::runtime_error("Native quality must be 0 (quick) or 1 (fine)");
+  if(quality<0||quality>2)throw std::runtime_error("Native quality must be 0 (quick), 1 (fine depth) or 2 (outer silhouette)");
   const bool object=subject&&std::string(subject)=="object";if(!subject||(!object&&std::string(subject)!="scene"))throw std::runtime_error("Unsupported scan subject");
   Progress report{callback,user};std::string backend=requested?requested:"auto";if(backend!="auto"&&backend!="cpu"&&backend!="vulkan")throw std::runtime_error("Unsupported compute backend");
+  if(quality==2){if(!object)throw std::runtime_error("Outer silhouette mode requires an object scan");if(backend=="vulkan")throw std::runtime_error("Outer silhouette mode currently uses CPU; choose CPU or automatic");backend="cpu";}
   std::unique_ptr<VulkanDepth> gpu;if(backend!="cpu")try{gpu=std::make_unique<VulkanDepth>();}catch(const std::exception&e){if(backend=="vulkan")throw;report(0,std::string("Vulkan unavailable; CPU fallback: ")+e.what());}
   backend=gpu?"vulkan: "+gpu->name():"cpu";report(1,backend);
   std::vector<fs::path> paths;for(auto&it:fs::directory_iterator(fs::u8path(input))){if(!it.is_regular_file())continue;std::string ext=it.path().extension().string();std::transform(ext.begin(),ext.end(),ext.begin(),::tolower);if(ext==".jpg"||ext==".jpeg"||ext==".png")paths.push_back(it.path());}
   std::sort(paths.begin(),paths.end());if(paths.size()<6||paths.size()>120)throw std::runtime_error("Use 6 to 120 photos (24 to 72 recommended)");
   const int side=1024,dense=quality?448:256;double focal=side*1.1;
-  report(1,quality?"fine local reconstruction: 448px depth, 128 planes, round-trip consistency and supported gaps":"quick local reconstruction");
+  report(1,quality==2?"intersecting local foreground contours; CPU outer silhouette approximation":quality?"fine local reconstruction: 448px depth, 128 planes, round-trip consistency and supported gaps":"quick local reconstruction");
   std::vector<double> measuredFocal;
   std::vector<Camera> cameras;for(auto&p:paths){
    if(fs::file_size(p)>40*1024*1024)throw std::runtime_error("Photo exceeds 40 MB");
@@ -225,7 +228,11 @@ int yv_reconstruct_v2(const char*input,const char*output,const char*requested,in
   }
   if(!measuredFocal.empty()){std::sort(measuredFocal.begin(),measuredFocal.end());focal=measuredFocal[measuredFocal.size()/2];if(measuredFocal.back()/measuredFocal.front()>1.12)throw std::runtime_error("Mixed focal lengths: use one camera and fixed zoom for the whole scan");report(2,"EXIF focal calibration "+std::to_string(focal));}
   else report(2,"No EXIF focal calibration; using estimated focal length. If reconstruction fails, recapture with guided camera.");
-  auto tracks=sfm(cameras,focal,measuredFocal.empty(),object,report);int registered=0;for(auto&c:cameras)registered+=c.registered;
+  if(quality==2)for(auto&c:cameras){auto mask=fs::u8path(input)/".foreground";mask/=c.source.filename();mask+=".png";if(!fs::exists(mask)||fs::file_size(mask)>2*1024*1024)throw std::runtime_error("Missing or invalid local foreground mask");std::ifstream stream(mask,std::ios::binary);std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(stream)),{});c.foreground=cv::imdecode(bytes,cv::IMREAD_GRAYSCALE);if(c.foreground.size()!=cv::Size(1024,1024))throw std::runtime_error("Foreground mask orientation / dimensions mismatch");}
+  // EXIF's rounded 35mm equivalent is an initial guess, not exact intrinsics
+  // for a cropped / stabilized phone photograph. Refine it in silhouette mode.
+  auto tracks=sfm(cameras,focal,measuredFocal.empty()||quality==2,object&&quality!=2,report,quality==2?45:15);int registered=0;for(auto&c:cameras)registered+=c.registered;
+  if(quality==2){std::vector<Vertex> vertices;std::vector<uint32_t> indices;std::vector<std::vector<float>> depths;auto result=silhouetteMesh(cameras,tracks,focal,vertices,indices,depths,dense,report);std::ostringstream detail;detail.imbue(std::locale::classic());detail<<"\"method\":\"outer silhouette intersection\",\"foreground\":\"local MobileSAM masks only\",\"medianSilhouetteIoU\":"<<result.medianIoU<<",\"p10SilhouetteIoU\":"<<result.p10IoU<<",\"supportPlaneClipped\":"<<(result.supportClipped?"true":"false")<<",\"unobservedConcavitiesRecovered\":false,\"bottomDetailIsMeasured\":false,";glb(fs::u8path(output),vertices,indices,cameras,depths,focal,dense,4096,"cpu",result.views,report,detail.str());report(100,"completed outer silhouette approximation");return 0;}
   Vec3d objectCenter(0,0,0);double objectRadius=0;
   if(object){Matx33d A=Matx33d::zeros();Vec3d b(0,0,0);for(const auto&c:cameras)if(c.registered){Vec3d d=c.R.t()*Vec3d(0,0,1);auto P=Matx33d::eye()-d*d.t();A+=P;b+=P*center(c);}objectCenter=A.inv(cv::DECOMP_SVD)*b;
    std::vector<double> radii;for(const auto&c:cameras)if(c.registered){Vec3d q=c.R*objectCenter+c.t;if(q[2]>0)radii.push_back(q[2]*std::max(c.photoRect.width,c.photoRect.height)*.48/focal);}

@@ -1,6 +1,7 @@
 from pathlib import Path
 import math
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 import pycolmap
 from PIL import Image
@@ -27,7 +28,9 @@ def capture_order(images):
         with Image.open(path) as image:
             exif = image.getexif().get_ifd(34665)
             try:
-                stamp = datetime.strptime(str(exif[36867]), "%Y:%m:%d %H:%M:%S").timestamp()
+                stamp = datetime.strptime(
+                    str(exif[36867]), "%Y:%m:%d %H:%M:%S"
+                ).timestamp()
                 fraction = str(exif.get(37521, "0")).strip()
                 stamp += float("0." + fraction) if fraction.isdigit() else 0
             except (KeyError, ValueError):
@@ -36,12 +39,29 @@ def capture_order(images):
     captured.sort()
     gaps = [b[0] - a[0] for a, b in zip(captured, captured[1:])]
     # Only a compact, uninterrupted capture burst provides ordering evidence.
-    if not gaps or min(gaps) <= 0 or max(gaps) > 30 or captured[-1][0] - captured[0][0] > 600:
+    if (
+        not gaps
+        or min(gaps) <= 0
+        or max(gaps) > 30
+        or captured[-1][0] - captured[0][0] > 600
+    ):
         return None
     return [name for _, name in captured]
 
 
-def calibrate(images: Path, masks: Path, work: Path, count: int, report, seed_name=None):
+def seed_image_id(database, name):
+    # A sqlite context manager commits/rolls back but does not close its Windows
+    # file handle. Close before temporary-work cleanup or it masks the real error.
+    with closing(sqlite3.connect(database)) as connection:
+        row = connection.execute(
+            "SELECT image_id FROM images WHERE name = ?", (name,)
+        ).fetchone()
+    return int(row[0]) if row else None
+
+
+def calibrate(
+    images: Path, masks: Path, work: Path, count: int, report, seed_name=None
+):
     database = work / "database.db"
     extraction = pycolmap.FeatureExtractionOptions()
     extraction.max_image_size = 2000
@@ -81,10 +101,15 @@ def calibrate(images: Path, masks: Path, work: Path, count: int, report, seed_na
         pairing = pycolmap.ImportedPairingOptions()
         pairing.match_list_path = pair_file
         pycolmap.match_image_pairs(
-            database, matching_options=matching, pairing_options=pairing, device=pycolmap.Device.cpu
+            database,
+            matching_options=matching,
+            pairing_options=pairing,
+            device=pycolmap.Device.cpu,
         )
     else:
-        pycolmap.match_exhaustive(database, matching_options=matching, device=pycolmap.Device.cpu)
+        pycolmap.match_exhaustive(
+            database, matching_options=matching, device=pycolmap.Device.cpu
+        )
     options = pycolmap.IncrementalPipelineOptions()
     options.num_threads = 6
     options.random_seed = 0
@@ -92,14 +117,13 @@ def calibrate(images: Path, masks: Path, work: Path, count: int, report, seed_na
     options.mapper.abs_pose_min_num_inliers = 30
     options.min_model_size = 6
     if seed_name:
-        with sqlite3.connect(database) as connection:
-            row = connection.execute(
-                "SELECT image_id FROM images WHERE name = ?", (seed_name,)
-            ).fetchone()
-        if row:
-            options.init_image_id1 = int(row[0])
+        image_id = seed_image_id(database, seed_name)
+        if image_id is not None:
+            options.init_image_id1 = image_id
     report(42, "联合优化相机位置、焦距与空间点")
-    models = pycolmap.incremental_mapping(database, images, work / "sparse", options=options)
+    models = pycolmap.incremental_mapping(
+        database, images, work / "sparse", options=options
+    )
     if not models:
         raise ValueError("无法恢复一致的相机运动，原片已保留。")
     best = max(models.values(), key=lambda m: m.num_reg_images())
@@ -109,7 +133,9 @@ def calibrate(images: Path, masks: Path, work: Path, count: int, report, seed_na
         or not math.isfinite(error)
         or error > 2
     ):
-        raise ValueError(f"定位质量不足：{best.num_reg_images()}/{count} 个视角；原片已保留。")
+        raise ValueError(
+            f"定位质量不足：{best.num_reg_images()}/{count} 个视角；原片已保留。"
+        )
     destination = work / "best"
     destination.mkdir(exist_ok=True)
     best.write(destination)

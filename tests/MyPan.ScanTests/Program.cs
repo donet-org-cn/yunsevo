@@ -19,6 +19,9 @@ Check(revision.Session.RemoteJob == null && revision.Session.Inputs == null && S
 Check(File.ReadAllBytes(video).SequenceEqual(File.ReadAllBytes(revision.Video)) && File.ReadAllText(video + ".calibration.json") == File.ReadAllText(revision.Video + ".calibration.json"), "Original video and camera calibration survive byte-for-byte");
 Check(snapshots.All(x => SHA256.HashData(File.ReadAllBytes(x.Key)).SequenceEqual(x.Value)), "Old model, photos, video and session are unchanged");
 var count = ScanStore.List().Count;
+var contour = ScanStore.CreateVideoRevision(original.Id, video, 2, CancellationToken.None);
+Check(contour.Session.Quality == 2 && contour.Session.DerivedFrom == original.Id, "Contour mode survives an independent video revision");
+count++;
 using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
 try { ScanStore.CreateVideoRevision(original.Id, video, 1, cancelled.Token); throw new Exception("Cancellation ignored"); } catch (OperationCanceledException) { }
 Check(ScanStore.List().Count == count && Directory.GetDirectories(Path.Combine(root, "scans")).Length == count, "Cancelled revision leaves no partial scan and preserves originals");

@@ -3,7 +3,7 @@
 struct TextureGroup { int camera; std::vector<uint32_t> indices; size_t offset=0; };
 static void glb(const fs::path&path,const std::vector<Vertex>&mesh,const std::vector<uint32_t>&faces,
  const std::vector<Camera>&cameras,const std::vector<std::vector<float>>&depths,double focal,int dense,int textureSide,
- const std::string&backend,int registered,Progress report){
+ const std::string&backend,int registered,Progress report,const std::string&extra=""){
  if(mesh.empty()||faces.size()<300)throw std::runtime_error("Insufficient consistent surface geometry; model was not published.");
  std::map<int,std::vector<uint32_t>> assigned;size_t textured=0;
  const double mid=cameras[0].color.cols*.5,df=focal*dense/cameras[0].color.cols;
@@ -83,7 +83,7 @@ static void glb(const fs::path&path,const std::vector<Vertex>&mesh,const std::ve
  auto textureIndex=[&](int camera){for(size_t i=0;i<images.size();i++)if(images[i].camera==camera)return (int)i;return -1;};
  float lo[3]={1e30f,1e30f,1e30f},hi[3]={-1e30f,-1e30f,-1e30f};for(auto&v:vertices){float a[]={v.x,v.y,v.z};for(int i=0;i<3;i++){lo[i]=std::min(lo[i],a[i]);hi[i]=std::max(hi[i],a[i]);}}
  std::ostringstream js;js.imbue(std::locale::classic());
- js<<"{\"asset\":{\"version\":\"2.0\",\"generator\":\"Yunsevo reconstruction experimental 0.3\"},\"extensionsUsed\":[\"KHR_materials_unlit\"],\"extras\":{\"backend\":\""<<safe(backend)<<"\",\"photos\":"<<cameras.size()<<",\"registeredCameras\":"<<registered<<",\"appearance\":\"original-photo projection\",\"textureMaxSide\":"<<textureSide<<",\"texturedTriangles\":"<<textured<<",\"quality\":\""<<(fine?"fine":"quick")<<"\",\"depthSide\":"<<dense<<",\"depthValidation\":\""<<(fine?"round-trip and independently supported planar gaps":"pairwise")<<"\",\"scale\":\"relative; not a survey measurement\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[";
+ js<<"{\"asset\":{\"version\":\"2.0\",\"generator\":\"Yunsevo reconstruction experimental 0.3\"},\"extensionsUsed\":[\"KHR_materials_unlit\"],\"extras\":{\"backend\":\""<<safe(backend)<<"\","<<extra<<"\"photos\":"<<cameras.size()<<",\"registeredCameras\":"<<registered<<",\"appearance\":\"original-photo projection\",\"textureMaxSide\":"<<textureSide<<",\"texturedTriangles\":"<<textured<<",\"quality\":\""<<(!extra.empty()?"outer silhouette":fine?"fine":"quick")<<"\",\"depthSide\":"<<dense<<",\"depthValidation\":\""<<(!extra.empty()?"rasterized silhouette surface; not measured depth":fine?"round-trip and independently supported planar gaps":"pairwise")<<"\",\"scale\":\"relative; not a survey measurement\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[";
  for(size_t i=0;i<groups.size();i++){if(i)js<<",";js<<"{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,"<<(groups[i].camera<0?"\"COLOR_0\":2":"\"TEXCOORD_0\":3")<<"},\"indices\":"<<4+i<<",\"material\":"<<i<<"}";}js<<"]}],\"materials\":[";
  for(size_t i=0;i<groups.size();i++){if(i)js<<",";js<<"{\"doubleSided\":true,\"extensions\":{\"KHR_materials_unlit\":{}},\"pbrMetallicRoughness\":{\"metallicFactor\":0,\"roughnessFactor\":1";int t=textureIndex(groups[i].camera);if(t>=0)js<<",\"baseColorTexture\":{\"index\":"<<t<<"}";js<<"}}";}
  js<<"],\"samplers\":[{\"magFilter\":9729,\"minFilter\":9987,\"wrapS\":33071,\"wrapT\":33071}],\"textures\":[";

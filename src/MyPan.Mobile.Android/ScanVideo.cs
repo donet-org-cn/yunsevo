@@ -35,8 +35,8 @@ internal static class ScanVideo
         var scan = ScanStore.Get(id); var objectScan = scan.Subject == "object";
         // Fine mode checks denser time windows while preserving source resolution.
         // A short clip is never padded with duplicate frames to meet a target count.
-        var count = Math.Min(scan.Quality == 1 ? 600 : 240, Math.Max(18, (int)(duration / (scan.Quality == 1 ? 100 : 250))));
-        var buckets = Math.Min(Math.Min(room, scan.Quality == 1 ? 96 : 48), Math.Max(6, count / 3));
+        var count = Math.Min(scan.Quality > 0 ? 600 : 240, Math.Max(18, (int)(duration / (scan.Quality > 0 ? 100 : 250))));
+        var buckets = Math.Min(Math.Min(room, scan.Quality > 0 ? 96 : 48), Math.Max(6, count / 3));
         var best = new Candidate?[buckets];
         for (var i = 0; i < count; i++)
         {

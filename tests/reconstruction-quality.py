@@ -9,17 +9,40 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools/reconstruction"))
 from imaging import (
-    prepare, mask_to_raster, require_mask_size, supported_surface_fraction,
+    prepare,
+    mask_to_raster,
+    require_mask_size,
+    supported_surface_fraction,
     subdivide_texture_surface,
 )
 from validation import rotation_jumps, orbit_gap, silhouette_coverage
 from planar import fill_planar_gaps
 from segmentation import consistent_candidates
-from calibration import capture_order
+from calibration import capture_order, seed_image_id
 from support import fit_horizontal_plane
 
 
 class QualityTests(unittest.TestCase):
+    def test_seed_database_handle_is_closed_before_windows_cleanup(self):
+        import sqlite3
+        import gc
+
+        with tempfile.TemporaryDirectory() as root:
+            database = Path(root) / "database.db"
+            connection = sqlite3.connect(database)
+            connection.execute("CREATE TABLE images (image_id INTEGER, name TEXT)")
+            connection.execute("INSERT INTO images VALUES (7, 'frame.jpg')")
+            connection.commit()
+            connection.close()
+            gc.disable()  # Cannot rely on eventual cycle collection releasing it.
+            try:
+                self.assertEqual(seed_image_id(database, "frame.jpg"), 7)
+                self.assertIsNone(seed_image_id(database, "missing.jpg"))
+                database.unlink()  # Fails on Windows while SQLite still owns it.
+                self.assertFalse(database.exists())
+            finally:
+                gc.enable()
+
     def test_texture_refinement_preserves_open_box_and_surface_area(self):
         import trimesh
 
@@ -29,7 +52,9 @@ class QualityTests(unittest.TestCase):
         self.assertAlmostEqual(result.area, box.area)
         self.assertFalse(result.is_watertight)
         self.assertTrue(result.is_winding_consistent)
-        self.assertLess(result.edges_unique_length.max(), np.linalg.norm(box.extents) / 79)
+        self.assertLess(
+            result.edges_unique_length.max(), np.linalg.norm(box.extents) / 79
+        )
         # No triangle may cover either genuine opening during texture refinement.
         self.assertTrue(np.all(np.abs(result.face_normals[:, 2]) < 1e-8))
 
@@ -41,7 +66,9 @@ class QualityTests(unittest.TestCase):
         self.assertGreater(fitted[1][2], 0.99)
         wall = points[:, [2, 0, 1]]
         self.assertIsNone(fit_horizontal_plane(wall, np.array([0.0, 0.0, 1.0]), 4.0))
-        self.assertIsNone(fit_horizontal_plane(points[:10], np.array([0.0, 0.0, 1.0]), 4.0))
+        self.assertIsNone(
+            fit_horizontal_plane(points[:10], np.array([0.0, 0.0, 1.0]), 4.0)
+        )
 
     def test_sparse_sampling_cannot_overweight_three_mask_outliers(self):
         import trimesh
@@ -57,7 +84,9 @@ class QualityTests(unittest.TestCase):
             rotation=SimpleNamespace(matrix=lambda: np.eye(3)), translation=np.zeros(3)
         )
         images = {
-            i: SimpleNamespace(name=f"{i:03}.jpg", camera_id=1, cam_from_world=lambda: pose)
+            i: SimpleNamespace(
+                name=f"{i:03}.jpg", camera_id=1, cam_from_world=lambda: pose
+            )
             for i in range(60)
         }
         model = SimpleNamespace(images=images, cameras={1: Camera()})
@@ -154,7 +183,8 @@ class QualityTests(unittest.TestCase):
             normalized = Image.open(root / "images/view-000.jpg")
             self.assertEqual(normalized.size, (60, 40))
             self.assertEqual(
-                (root / "images/view-000.jpg").read_bytes(), (source / "0.jpg").read_bytes()
+                (root / "images/view-000.jpg").read_bytes(),
+                (source / "0.jpg").read_bytes(),
             )
             upright_mask = np.zeros((60, 40), np.uint8)
             upright_mask[:30] = 255
@@ -189,7 +219,9 @@ class QualityTests(unittest.TestCase):
             "zyx", [[0, 0, 0], [9, 12, 2], [-4, 24, -3]], degrees=True
         ).as_matrix()
         self.assertLess(rotation_jumps(handheld).max(), 25)
-        aliased = Rotation.from_euler("y", [[0], [10], [180], [30]], degrees=True).as_matrix()
+        aliased = Rotation.from_euler(
+            "y", [[0], [10], [180], [30]], degrees=True
+        ).as_matrix()
         self.assertGreater(rotation_jumps(aliased).max(), 160)
 
     def test_mixed_sizes_are_not_given_one_false_calibration(self):

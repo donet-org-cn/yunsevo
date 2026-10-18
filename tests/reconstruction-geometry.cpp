@@ -51,6 +51,23 @@ int main(){
    if(!stopped)throw std::runtime_error("Fine depth stage ignored cancellation");
    std::cout<<"PASS fine multi-view outlier filtering and independently supported small gaps\nPASS depth-edge and unobserved-opening preservation\nPASS fine-stage cancellation\n";
   }
+  {
+   const int count=20;std::vector<Camera> views(count);double focal=850;
+   for(int i=0;i<count;i++){
+    double angle=2*CV_PI*i/count,elevation=(i%2?.3:-.3);Vec3d eye(5*std::cos(angle)*std::cos(elevation),5*std::sin(elevation),5*std::sin(angle)*std::cos(elevation));
+    Vec3d forward=-eye/cv::norm(eye),right=forward.cross(Vec3d(0,1,0));right/=cv::norm(right);Vec3d down=forward.cross(right);
+    auto&c=views[i];c.R={right[0],right[1],right[2],down[0],down[1],down[2],forward[0],forward[1],forward[2]};c.t=-c.R*eye;c.registered=true;c.color=Mat::zeros(1024,1024,CV_8UC3);c.foreground=Mat::zeros(1024,1024,CV_8U);
+    cv::circle(c.foreground,{512,512},(int)std::round(focal/std::sqrt(24.)),cv::Scalar(255),cv::FILLED);
+   }
+   std::vector<Vertex> mesh;std::vector<uint32_t> faces;std::vector<std::vector<float>> depths;
+   auto measured=silhouetteMesh(views,{},focal,mesh,faces,depths,256,Progress{nullptr,nullptr},64);
+   double radiusError=0;for(auto&v:mesh){radiusError+=std::abs(std::sqrt(v.x*v.x+v.y*v.y+v.z*v.z)-1);if(v.x*v.nx+v.y*v.ny+v.z*v.nz<0)throw std::runtime_error("Silhouette normals point inward");}radiusError/=mesh.size();
+   std::map<std::pair<uint32_t,uint32_t>,int> edges;for(size_t i=0;i<faces.size();i+=3)for(int k=0;k<3;k++){auto a=faces[i+k],b=faces[i+(k+1)%3];edges[std::minmax(a,b)]++;}for(auto&[edge,count]:edges)if(count!=2)throw std::runtime_error("Silhouette mesh is not closed");
+   if(radiusError>.05||measured.medianIoU<.95||std::abs(depths[0][128*256+128]-4)>.07)throw std::runtime_error("Known sphere shape / projection / occlusion regression");
+   bool stopped=false;try{std::vector<Vertex> m;std::vector<uint32_t> f;silhouetteMesh(views,{},focal,m,f,depths,256,Progress{[](void*,int,const char*){return 1;},nullptr},32);}catch(const std::runtime_error&e){stopped=std::string(e.what())=="CANCELLED";}if(!stopped)throw std::runtime_error("Silhouette cancellation ignored");
+   std::cout<<"PASS silhouette known-sphere geometry, outward normals, closed topology and front-surface occlusion; mean radius error "<<radiusError<<"\nPASS silhouette cancellation\n";
+   std::vector<Vec3d> partial;for(int i=0;i<12;i++){double angle=(i-6)*CV_PI/36;partial.push_back({5*std::cos(angle),0,5*std::sin(angle)});}if(hullOrbitGap(partial,{0,0,0})<280)throw std::runtime_error("Many nearby views were mistaken for a complete orbit");std::cout<<"PASS incomplete-orbit detection\n";
+  }
   return 0;
  }catch(const std::exception&e){std::cerr<<e.what()<<"\n";return 1;}
 }

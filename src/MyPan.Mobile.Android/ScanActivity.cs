@@ -88,15 +88,15 @@ public sealed class ScanActivity : Activity
             body.AddView(Ui.Button(this, "从系统相册添加照片", () => { if (busy) return; importing = scan.Id; StartActivityForResult(new Intent(Intent.ActionOpenDocument).AddCategory(Intent.CategoryOpenable)!.SetType("image/*")!.PutExtra(Intent.ExtraAllowMultiple, true), 971); }, false));
             if (files.Length >= 6)
             {
-                body.AddView(Ui.Button(this, "手机本机生成 · " + (scan.Quality == 1 ? "精细" : "快速"), () => PickBackend(scan.Id)));
-                body.AddView(Ui.Text(this, "本机精细：更密集的深度计算、多视角校验和小缺口修复；支持 Vulkan／CPU，无需上传。", 12));
+                body.AddView(Ui.Button(this, "手机本机生成 · " + QualityName(scan.Quality), () => PickBackend(scan.Id)));
+                body.AddView(Ui.Text(this, scan.Quality == 2 ? "轮廓精细：本机识别主体并计算外形，CPU 运行，无需上传。适合透明瓶身；未拍到的凹槽和底面不是实测细节。" : "深度精细：多视角深度校验与小缺口修复，支持 Vulkan／CPU。透明物体可改选轮廓精细。", 12));
                 body.AddView(Ui.Button(this, "上传原片和视频 · 服务端生成", () => _ = Run(() => Submit(scan.Id)), false));
             }
         }
         if (!working)
         {
-            body.AddView(Ui.Button(this, "本机生成质量：" + (scan.Quality == 1 ? "精细" : "快速"), () =>
-                new AlertDialog.Builder(this)!.SetTitle("本机三维生成质量")!.SetItems(new[] { "快速 · 较低计算量，2K 贴图上限", "精细 · 多视角校验与小缺口修复，4K 贴图上限" }, (_, choice) => { ScanStore.Edit(scan.Id, x => x with { Quality = choice.Which }); Render(); })!.Show(), false));
+            body.AddView(Ui.Button(this, "本机生成方式：" + QualityName(scan.Quality), () =>
+                new AlertDialog.Builder(this)!.SetTitle("本机三维生成方式")!.SetItems(scan.Subject == "object" ? new[] { "快速 · 较低计算量，2K 贴图上限", "深度精细 · 设备／不透明物体，Vulkan 或 CPU", "轮廓精细 · 透明瓶身／光滑物体，CPU" } : new[] { "快速 · 较低计算量", "深度精细 · Vulkan 或 CPU" }, (_, choice) => { ScanStore.Edit(scan.Id, x => x with { Quality = choice.Which }); Render(); })!.Show(), false));
             foreach (var video in Directory.GetFiles(ScanStore.Home(scan.Id), "video-*.mp4"))
             {
                 var copy = video; body.AddView(Ui.Button(this, "从原视频重新提取关键照片 · " + Path.GetFileName(video)[..14], () => Reextract(scan.Id, copy), false));
@@ -112,7 +112,7 @@ public sealed class ScanActivity : Activity
         if (scan.State == "remote") body.AddView(Ui.Button(this, "取消服务端任务", () => _ = Run(async () => { using var r = await AppServices.Client.Connection!.Http.DeleteAsync("api/reconstruction/jobs/" + scan.RemoteJob, stop.Token); await CloudConnection.Check(r, stop.Token); await Poll(scan); Render(); }), false));
         if (File.Exists(ScanStore.Model(scan.Id)))
         {
-            if (!working && files.Length >= 6 && !scan.RemoteJob.HasValue) body.AddView(Ui.Button(this, "用原片提交服务端精细重建", () => _ = Run(async () => { ScanStore.Edit(scan.Id, x => x with { Quality = 1 }); await Submit(scan.Id); }), false));
+            if (!working && files.Length >= 6 && !scan.RemoteJob.HasValue) body.AddView(Ui.Button(this, "用原片提交服务端 · " + QualityName(scan.Quality), () => _ = Run(() => Submit(scan.Id)), false));
             if (!working && files.Length >= 6) body.AddView(Ui.Button(this, "用原片重新生成 · 保留旧模型副本", () => PickBackend(scan.Id), false));
             body.AddView(Ui.Button(this, "旋转／缩放查看模型", () => StartActivity(new Intent(this, typeof(LocalModelActivity)).PutExtra("scan", scan.Id.ToString()))));
             if (!scan.ModelUpload.HasValue) body.AddView(Ui.Button(this, "上传模型到云端", () => _ = Run(async () =>
@@ -173,14 +173,16 @@ public sealed class ScanActivity : Activity
     }
     public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
     { base.OnRequestPermissionsResult(requestCode, permissions, grantResults); if (requestCode == 972 && grantResults.Length > 0 && grantResults[0] == Permission.Granted && selected.HasValue) Camera(selected.Value, importing.HasValue); }
+    private static string QualityName(int quality) => quality switch { 2 => "轮廓精细", 1 => "深度精细", _ => "快速" };
     private void PickBackend(Guid id)
     {
         if (busy) return;
         if (caps?.Cpu != true) { Ui.Alert(this, "本机生成不可用", caps?.Error ?? "请等待能力检测完成。"); return; }
-        var choices = caps.Vulkan ? new[] { "自动（优先 Vulkan，失败回退 CPU）", "Vulkan GPU", "CPU" } : new[] { "CPU" };
+        var useVulkan = caps.Vulkan && ScanStore.Get(id).Quality != 2;
+        var choices = useVulkan ? new[] { "自动（优先 Vulkan，失败回退 CPU）", "Vulkan GPU", "CPU" } : new[] { "CPU（全部在手机本机完成）" };
         new AlertDialog.Builder(this)!.SetTitle("选择本机计算方式")!.SetItems(choices, (_, args) =>
         {
-            var backend = caps.Vulkan ? new[] { "auto", "vulkan", "cpu" }[args.Which] : "cpu";
+            var backend = useVulkan ? new[] { "auto", "vulkan", "cpu" }[args.Which] : "cpu";
             new AlertDialog.Builder(this)!.SetTitle("开始三维重建？")!.SetMessage("这是试验功能，可能需要几分钟并导致手机发热。请保持通风，可从通知栏停止；原片会保留，已有本机模型会保存副本；生成失败会恢复旧模型。")!.SetPositiveButton("开始", (_, _) =>
             {
                 ScanStore.Edit(id, x => x with { Backend = backend, State = "collecting" });
@@ -266,7 +268,7 @@ public sealed class ScanActivity : Activity
         if (busy) return;
         new AlertDialog.Builder(this)!.SetTitle("重新提取关键照片")!.SetItems(new[] { "精细选帧 · 最多 96 张", "快速选帧 · 最多 48 张" }, (_, choice) => _ = Run(async () =>
         {
-            var revision = await Task.Run(() => ScanStore.CreateVideoRevision(id, video, choice.Which == 0 ? 1 : 0, stop.Token));
+            var revision = await Task.Run(() => ScanStore.CreateVideoRevision(id, video, choice.Which == 0 ? Math.Max(1, ScanStore.Get(id).Quality) : 0, stop.Token));
             selected = revision.Session.Id; Render(); await ExtractVideo(revision.Session.Id, revision.Video);
         }))!.SetNegativeButton("取消", (_, _) => { })!.Show();
     }

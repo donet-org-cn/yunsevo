@@ -14,9 +14,15 @@ public static class ReconstructionMessages
         if (text.StartsWith("Only ", StringComparison.Ordinal) && text.Contains(" cameras registered", StringComparison.Ordinal))
             return "相机定位不足：" + text[5..text.IndexOf(" cameras registered", StringComparison.Ordinal)] + " 张照片完成定位。请保持物体居中、对焦清晰，绕行时补充相邻视角；避免人员移动、变焦和快速转动。原片已保留，可补拍后重试。";
         if (text.Contains("Insufficient camera movement / parallax", StringComparison.Ordinal)) return "缺少足够的相机位移。请带着手机围绕静止物体走动，原地转动手机无法恢复三维深度。原片已保留。";
+        if (text.StartsWith("Silhouette reprojection", StringComparison.Ordinal) || text.StartsWith("Camera poses disagree", StringComparison.Ordinal)) return "相机定位与主体轮廓不一致，未发布失真的模型。请检查相邻照片的重叠和主体是否完整，原片已保留。";
+        if (text.StartsWith("Silhouette volume is unbounded", StringComparison.Ordinal)) return "照片未能约束完整外形，请绕物体拍摄完整一圈并补充顶部视角。原片已保留。";
         return text;
     }
     public static string Progress(string text) => text.StartsWith("bundle adjustment", StringComparison.Ordinal) ? "联合优化相机位置与空间点" :
+        text.StartsWith("intersecting local", StringComparison.Ordinal) ? "轮廓精细 · 计算多视角外形交集" :
+        text.StartsWith("extracting silhouette", StringComparison.Ordinal) || text.StartsWith("smoothing silhouette", StringComparison.Ordinal) ? "轮廓精细 · 提取外形表面" :
+        text.StartsWith("checking silhouette", StringComparison.Ordinal) || text.StartsWith("silhouette agreement", StringComparison.Ordinal) ? "轮廓精细 · 对照原片检查外形" :
+        text.StartsWith("completed outer", StringComparison.Ordinal) ? "轮廓外形已生成，内凹与底部细节不是实测结果" :
         text.StartsWith("fine depth consistency", StringComparison.Ordinal) ? "精细模式 · 多视角往返校验，剔除错误深度" :
         text.StartsWith("fine supported", StringComparison.Ordinal) ? "精细模式 · 修补其他视角支持的小缺口" :
         text.StartsWith("fine depth retained", StringComparison.Ordinal) ? "精细深度校验完成，开始表面融合" :

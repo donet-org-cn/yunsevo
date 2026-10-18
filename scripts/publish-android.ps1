@@ -32,10 +32,15 @@ try {
     $zip=[IO.Compression.ZipFile]::OpenRead($target)
     try {
         $abi=if ($Runtime -eq 'android-arm64') { 'arm64-v8a' } else { 'x86_64' }
-        foreach ($native in @('libyunsevo_reconstruction.so','libc++_shared.so')) {
+        foreach ($native in @('libyunsevo_reconstruction.so','libc++_shared.so','libonnxruntime.so')) {
             if (!$zip.GetEntry("lib/$abi/$native")) { throw "Missing reconstruction library: $native" }
         }
         if (!$zip.GetEntry('assets/model-viewer/model-viewer.min.js')) { throw 'Missing offline model viewer.' }
+        foreach ($model in @('encoder.onnx','decoder.onnx')) {
+            $entry=$zip.GetEntry("assets/reconstruction-masks/$model")
+            if (!$entry -or $entry.Length -lt 1000000) { throw "Missing local foreground model: $model" }
+        }
+        if (!$zip.GetEntry('assets/Notices/reconstruction/LICENSE-MobileSAM.txt')) {throw 'Missing MobileSAM license.'}
         foreach ($assembly in @('MyPan.Mobile.Android','MyPan.Mobile.Core','MyPan.Sync','MyPan.Contracts')) {
             $entry=$zip.GetEntry("lib/$abi/libaot-$assembly.dll.so")
             if (!$entry -or $entry.Length -lt 1000) { throw "Missing AOT native library: $assembly ($Runtime)" }

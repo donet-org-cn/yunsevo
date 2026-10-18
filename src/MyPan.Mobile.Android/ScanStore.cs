@@ -65,7 +65,7 @@ internal static class ScanStore
         {
             var previous = Get(id);
             if (previous.State is "running" or "remote" or "staging" or "uploading") throw new InvalidOperationException("请先结束当前任务，再重新选帧。");
-            if (quality is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(quality));
+            if (quality is < 0 or > 2) throw new ArgumentOutOfRangeException(nameof(quality));
             source = Path.GetFullPath(source);
             if (Path.GetDirectoryName(source) != Path.GetFullPath(Home(id)) || !Path.GetFileName(source).StartsWith("video-", StringComparison.Ordinal) || Path.GetExtension(source) != ".mp4" || !File.Exists(source)) throw new IOException("扫描原视频不存在。");
             if (new FileInfo(source).Length > 512L * 1024 * 1024) throw new IOException("视频不能超过 512 MB。");

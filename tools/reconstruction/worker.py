@@ -164,7 +164,31 @@ def main():
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                 )
             if result.returncode:
-                raise ValueError("表面或贴图生成未通过，原片已保留。")
+                # Keep the bounded subprocess diagnosis outside temporary work.
+                # Otherwise Windows cleanup or a generic final message hides the
+                # actual failed geometry / texture gate from the administrator.
+                with (candidate / (script + ".log")).open("rb") as log:
+                    log.seek(0, os.SEEK_END)
+                    log.seek(max(0, log.tell() - 12000))
+                    diagnosis = log.read().decode("utf-8", errors="replace")
+                output.with_suffix(".failure.log").write_text(
+                    script + "\n" + diagnosis, encoding="utf-8"
+                )
+                reasons = {
+                    "Too many subject-inconsistent camera poses": "相机定位与主体轮廓不一致，请增加转角处的重叠照片。",
+                    "No visible textured faces": "没有足够的可见原片贴图，未发布模型。",
+                    "原片覆盖的表面积不足 90%": "原片覆盖的表面积不足 90%，未发布缺少贴图的模型。",
+                    "Surface level must be within volume data range": "多视角轮廓未形成一致的体积，请检查主体识别和拍摄视角。",
+                }
+                reason = next(
+                    (
+                        message
+                        for marker, message in reasons.items()
+                        if marker in diagnosis
+                    ),
+                    "表面或贴图生成未通过，服务端保留了阶段诊断。",
+                )
+                raise ValueError(reason + "原片已保留。")
 
         import pycolmap
         import trimesh

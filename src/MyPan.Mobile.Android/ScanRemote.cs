@@ -25,16 +25,17 @@ internal static class ScanRemote
             if (videos?.Any(x => x?.Completed == null) == true) return;
             var request = new StartReconstruction(scan.Folder.Id, scan.Name, sources.Select(x => new ReconstructionPhoto(x!.Completed!.Id, x.Completed.Version)).ToList(), Quality: scan.Quality, Subject: scan.Subject, ClientRequestId: scan.RemoteRequestId ?? scan.Id);
             var onlyVideoFrames = videos?.Count == 1 && scan.Inputs?.All(name => name.StartsWith("frame-" + Path.GetFileNameWithoutExtension(videos[0]!.Completed!.Path) + "-", StringComparison.Ordinal)) == true;
-            if (scan.Quality == 1 && scan.Subject == "object")
+            if (scan.Quality > 0 && scan.Subject == "object")
             {
                 using var capsResponse = await AppServices.Client.Connection!.Http.GetAsync("api/reconstruction/capabilities", ct); await CloudConnection.Check(capsResponse, ct);
                 var caps = await capsResponse.Content.ReadFromJsonAsync(ApiJson.Default.ReconstructionCapabilities, ct);
+                if (scan.Quality == 2 && caps?.HighQuality != true) throw new IOException("服务端未配置轮廓外形引擎，请使用手机本机生成或联系管理员。");
                 if (caps?.HighQuality == true)
-                    request = request with { Quality = 2, Backend = "cpu" };
+                    request = request with { Quality = scan.Quality == 2 ? 3 : 2, Backend = "cpu" };
                 if (onlyVideoFrames && caps?.HighQualityVideo == true)
                 {
                     var video = videos![0]!.Completed!;
-                    request = request with { Photos = [], Video = new(video.Id, video.Version), Quality = 2, Backend = "cpu" };
+                    request = request with { Photos = [], Video = new(video.Id, video.Version), Quality = scan.Quality == 2 ? 3 : 2, Backend = "cpu" };
                 }
             }
             using var r = await AppServices.Client.Connection!.Http.PostAsJsonAsync("api/reconstruction/jobs", request, ApiJson.Default.StartReconstruction, ct); await CloudConnection.Check(r, ct);

@@ -15,6 +15,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Export verified local foreground models
+        shell: pwsh
+        run: ./scripts/build-mobile-masks.ps1
       - uses: actions/setup-java@v4
         with:
           distribution: microsoft
