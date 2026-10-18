@@ -43,4 +43,6 @@
 
 同步日志支持搜索、文件活动/需要处理筛选和分页。运行中最多保留最近 1000 条界面记录，启动时载入最近 150 条；完整日志仍按天存储并可打开目录查看。Windows 按需下载完成记录使用相对文件名，便于在活动面板识别。
 
-本次实际验证 Windows Native AOT 界面。Linux x64 和 macOS ARM64 通过代码编译检查，托盘显示、透明面板及定位行为仍需对应桌面环境实机验证；各平台原有同步方式保持兼容。
+v2.6.2 已在 Windows、Linux、macOS 的 x64/ARM64 原生主机上分别构建，并从最终发布包解压运行。六个平台均通过 12 项原生架构、服务登录、文件传输、客户端同步与真实 Avalonia 登录窗口渲染检查，见 [Release](https://github.com/hnlyf168/yunsevo/releases/tag/v2.6.2) 的 verification 附件及[原生窗口截图](screenshots.md)。同时修复 macOS 托盘附加前提示文字为 null 引发的启动崩溃。
+
+这些检查不等同完整桌面验收：Linux 各桌面环境、macOS 托盘透明面板及定位仍需实际环境验证；Windows ARM64 的 CFAPI 仍需单独回归。Linux/macOS 目前完整下载同步，macOS 未进行 Apple Developer ID 签名或公证。

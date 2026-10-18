@@ -1,6 +1,6 @@
 # 沄序 · 界面截图
 
-以下均为当前程序在隔离测试环境实际运行的截图，使用演示账号和文件，不含正式云盘数据或密钥。桌面截图来自 Windows Native AOT 客户端；Linux/macOS 共用 Avalonia 界面，系统字体、窗口和托盘表现可能不同。
+以下均为当前程序在隔离测试环境实际运行的截图，使用演示账号和文件，不含正式云盘数据或密钥。任务管理示例来自 Windows Native AOT 客户端；页末另列出 v2.6.2 全部六个平台的原生登录窗口截图。各系统共用 Avalonia 界面，字体、窗口和托盘表现可能不同。
 
 ## 桌面客户端
 
@@ -65,3 +65,21 @@
 ### 审计日志
 
 ![服务端审计日志](screenshots/server-audit.png)
+
+## 六个平台的原生窗口
+
+以下截图由 GitHub Actions 在对应操作系统上，从最终压缩包解压运行 Native AOT 客户端后生成，已与 Release 的 SHA-256 清单核对。各平台均通过 12 项启动、登录、文件传输、同步和窗口渲染检查；完整桌面交互与托盘定位仍需各环境验收。
+
+| 系统 | x64 / Intel | ARM64 / Apple Silicon |
+| --- | --- | --- |
+| Windows | [实际截图](screenshots/desktop-win-x64.png) | [实际截图](screenshots/desktop-win-arm64.png) |
+| Linux | [实际截图](screenshots/desktop-linux-x64.png) | [实际截图](screenshots/desktop-linux-arm64.png) |
+| macOS | [实际截图](screenshots/desktop-osx-x64.png) | [实际截图](screenshots/desktop-osx-arm64.png) |
+
+### Linux
+
+![Linux x64 原生客户端](screenshots/desktop-linux-x64.png)
+
+### macOS
+
+![macOS Apple Silicon 原生客户端](screenshots/desktop-osx-arm64.png)
