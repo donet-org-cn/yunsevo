@@ -1,0 +1,36 @@
+#version 450
+layout(local_size_x=64) in;
+layout(std430,binding=0) readonly buffer Data { float image[]; };
+layout(std430,binding=1) readonly buffer Params { vec4 param[]; };
+layout(std430,binding=2) writeonly buffer Result { float depths[]; };
+float sampleImage(int source, vec2 q, int w, int h) {
+ if(q.x<0.0||q.y<0.0||q.x>=float(w-1)||q.y>=float(h-1)) return -1.0;
+ ivec2 i=ivec2(floor(q));vec2 a=fract(q);int base=(source*w*h)+i.y*w+i.x;
+ return mix(mix(image[base],image[base+1],a.x),mix(image[base+w],image[base+w+1],a.x),a.y);
+}
+void main() {
+ int w=int(param[0].x),h=int(param[0].y),planes=int(param[0].z),sources=int(param[0].w);
+ int index=int(gl_GlobalInvocationID.x);if(index>=w*h)return;
+ int x=index%w,y=index/w;depths[index]=0.0;
+ if(x<3||y<3||x>=w-3||y>=h-3)return;
+ float zn=param[1].x,zf=param[1].y,f=param[1].z,cx=param[1].w,cy=param[2].x;
+ float best=2.0,second=2.0,bestZ=0.0;
+ for(int plane=0;plane<planes;plane++) {
+  float z=1.0/mix(1.0/zn,1.0/zf,float(plane)/float(planes-1));float total=0.0;int valid=0;
+  for(int s=0;s<sources;s++) {
+   vec4 r0=param[3+s*3],r1=param[4+s*3],r2=param[5+s*3];
+   float a=0.0,b=0.0,aa=0.0,bb=0.0,ab=0.0;bool ok=true;
+   for(int dy=-1;dy<=1;dy++)for(int dx=-1;dx<=1;dx++) {
+    vec4 p=vec4((float(x+dx)-cx)*z/f,(float(y+dy)-cy)*z/f,z,1.0);
+    vec3 q=vec3(dot(r0,p),dot(r1,p),dot(r2,p));
+    float u=q.z>0.0?sampleImage(s+1,vec2(f*q.x/q.z+cx,f*q.y/q.z+cy),w,h):-1.0;
+    float v=image[(y+dy)*w+x+dx];if(u<0.0)ok=false;
+    a+=v;b+=u;aa+=v*v;bb+=u*u;ab+=u*v;
+   }
+   float va=aa-a*a/9.0,vb=bb-b*b/9.0;
+   if(ok&&va>0.00015&&vb>0.00015){total+=1.0-clamp((ab-a*b/9.0)/sqrt(va*vb),-1.0,1.0);valid++;}
+  }
+  if(valid==sources){float cost=total/float(valid);if(cost<best){second=best;best=cost;bestZ=z;}else second=min(second,cost);}
+ }
+ if(best<0.22)depths[index]=bestZ;
+}

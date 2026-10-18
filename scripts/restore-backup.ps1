@@ -32,7 +32,7 @@ try {
         if (!$seen.Add($name) -or $name.Contains('\') -or $name.Contains(':') -or ($name.Split('/') | Where-Object {$_ -eq '' -or $_ -eq '.' -or $_ -eq '..'})) { throw '备份包含重复或不安全的路径。' }
         if ($name -eq 'manifest.json') { continue }
         if (!$declared.ContainsKey($name) -or $declared[$name].size -ne $entry.Length) { throw ('备份文件未登记或长度不符：' + $name) }
-        if ($name -notmatch '^(api-key\.txt|RESTORE\.txt|data/catalog\.json|data/blobs/[a-fA-F0-9]{32}_[a-zA-Z0-9_-]+|data/audit/audit\.jsonl(\.[1-5])?|data/protocols\.json|data/smb-credentials\.json|data/smb-key\.bin|data/environment-settings\.json|data/environment\.key)$') { throw ('未知备份文件：' + $name) }
+        if ($name -notmatch '^(api-key\.txt|RESTORE\.txt|data/catalog\.json|data/blobs/[a-fA-F0-9]{32}_[a-zA-Z0-9_-]+|data/audit/audit\.jsonl(\.[1-5])?|data/protocols\.json|data/smb-credentials\.json|data/smb-key\.bin|data/environment-settings\.json|data/environment\.key|data/reconstruction/[a-fA-F0-9]{32}/job\.json)$') { throw ('未知备份文件：' + $name) }
         $resolved = [IO.Path]::GetFullPath((Join-Path $stagingPath $name))
         if (!$resolved.StartsWith($stagingPath + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw '备份路径越界。' }
     }

@@ -87,3 +87,8 @@ CloudEntry 新增可选 origin，历史数据可继续读取；当前内容、�
 ARM64 包已在 Android 16 真机安装并确认登录界面正常启动。真机的相机兼容性、相册权限和厂商后台省电策略仍需结合实际使用验证；当前安装包为开发签名，未作为正式商用签名发布。iPhone 端尚未提供。
 
 参考：[.NET Android 构建属性](https://learn.microsoft.com/dotnet/android/building-apps/build-properties)、[.NET 移动运行时与编译](https://learn.microsoft.com/dotnet/maui/deployment/runtimes-compilation?view=net-maui-10.0)、[Android 照片访问权限](https://developer.android.com/about/versions/14/changes/partial-photo-video-access)、[Android JobScheduler](https://developer.android.com/reference/android/app/job/JobInfo.Builder)。
+
+
+## 三维扫描（Android 1.3 试验版）
+
+在“工程拍摄”点击“三维扫描”，选择云端目录并添加系统相册原片或引导绕拍。支持本机 Vulkan／CPU 和服务端生成，生成的 GLB 在手机与网页可旋转、缩放、分享和下载。构建顺序、运行库、数据恢复与当前质量边界见[三维扫描说明](reconstruction.md)。

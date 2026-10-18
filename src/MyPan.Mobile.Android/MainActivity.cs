@@ -179,6 +179,7 @@ public sealed partial class MainActivity : Activity
     private Task RenderCamera()
     {
         content.RemoveAllViews(); content.AddView(Ui.Text(this, "工程水印相机", 25, true));
+        content.AddView(Ui.Button(this, "三维扫描 · 拍摄或从相册创建", () => StartActivity(new Intent(this, typeof(ScanActivity))), false));
         var project = Client.Options.Project;
         content.AddView(Ui.Text(this, project == null ? "先选择工程，再开始拍摄" : "当前工程：" + Ui.PathLabel(project.Path), 17));
         content.AddView(Ui.Text(this, "照片自动添加工程、拍摄人、时间与备注水印，并保存到选定的工程目录。弱网时先保存在手机上传队列。", 14));

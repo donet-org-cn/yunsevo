@@ -81,7 +81,7 @@ internal sealed class CameraGlPipe : IDisposable
     public void Watermark(string text, MobileOptions value)
     {
         if (Volatile.Read(ref disposed) != 0) return;
-        handler.Post(() => { watermark = text; options = value; renderedKey = null; });
+        handler.Post(() => { if (watermark == text && options == value) return; watermark = text; options = value; renderedKey = null; });
     }
     public Task AttachEncoder(Surface target, int width, int height) => Invoke(() =>
     {

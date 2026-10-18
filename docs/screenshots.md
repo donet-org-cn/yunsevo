@@ -83,3 +83,16 @@
 ### macOS
 
 ![macOS Apple Silicon 原生客户端](screenshots/desktop-osx-arm64.png)
+
+
+## 三维扫描与模型（试验版）
+
+手机界面来自隔离 Android 模拟器；其 Vulkan 软件设备不会被标为硬件 GPU。Adreno 830 实机已验证 Vulkan 计算。展示的模型来自 48 张独立渲染的带纹理方盒照片，用于验证真实重建与查看链路，并非现场实拍质量样例。
+
+![手机三维采集](screenshots/mobile-3d-capture.png)
+
+![手机模型查看](screenshots/mobile-3d-viewer.png)
+
+![服务端三维任务](screenshots/server-reconstruction.png)
+
+![服务端模型查看](screenshots/server-model.png)

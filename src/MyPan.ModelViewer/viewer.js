@@ -1,0 +1,13 @@
+import './model-viewer.min.js';
+const model=document.getElementById('model'),message=document.getElementById('message');
+const q=new URLSearchParams(location.search),id=q.get('id'),version=q.get('version');
+const local=location.hostname==='yunsevo-model.local';
+if(local)model.src='/model.glb';
+else if(/^[0-9a-f-]{36}$/i.test(id||'')&&version&&version.length<200)model.src=(q.get('trash')==='1'?'/api/trash/'+id+'/preview':'/api/preview/'+id)+'?version='+encodeURIComponent(version);
+else message.textContent='模型地址无效。';
+model.addEventListener('progress',e=>{message.textContent=model.loaded||e.detail.totalProgress>=1?'':'正在加载 · '+Math.round(e.detail.totalProgress*100)+'%';});
+model.addEventListener('load',()=>{message.textContent='';});
+model.addEventListener('error',()=>{message.textContent='模型无法预览，请检查 GLB 格式、文件权限或下载后查看。';});
+document.getElementById('rotate').onclick=()=>{model.autoRotate=!model.autoRotate;document.getElementById('rotate').textContent=model.autoRotate?'停止环绕':'自动环绕';};
+document.getElementById('reset').onclick=()=>{model.autoRotate=false;model.resetTurntableRotation();model.cameraOrbit='auto auto auto';model.cameraTarget='auto auto auto';model.fieldOfView='auto';model.jumpCameraToGoal();document.getElementById('rotate').textContent='自动环绕';};
+window.addEventListener('pagehide',()=>{model.src='';});

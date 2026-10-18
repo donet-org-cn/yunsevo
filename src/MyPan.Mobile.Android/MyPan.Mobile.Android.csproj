@@ -5,8 +5,10 @@
     <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
     <ApplicationId>app.yunsevo.drive</ApplicationId>
     <ApplicationTitle>沄序</ApplicationTitle>
-    <ApplicationDisplayVersion>1.2.0</ApplicationDisplayVersion>
-    <ApplicationVersion>3</ApplicationVersion>
+    <ApplicationDisplayVersion>1.3.0</ApplicationDisplayVersion>
+    <ApplicationVersion>4</ApplicationVersion>
+    <ReconstructionAbi Condition="'$(RuntimeIdentifier)' == 'android-arm64'">arm64-v8a</ReconstructionAbi>
+    <ReconstructionAbi Condition="'$(RuntimeIdentifier)' == 'android-x64'">x86_64</ReconstructionAbi>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
@@ -16,4 +18,12 @@
   <ItemGroup>
     <ProjectReference Include="../MyPan.Mobile.Core/MyPan.Mobile.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <AndroidAsset Include="../../artifacts/reconstruction-native/android/$(RuntimeIdentifier)/Notices/**/*" Link="Assets/Notices/reconstruction/%(RecursiveDir)%(Filename)%(Extension)" LogicalName="Notices/reconstruction/%(RecursiveDir)%(Filename)%(Extension)" />
+    <AndroidAsset Include="../MyPan.ModelViewer/*" Link="Assets/model-viewer/%(Filename)%(Extension)" LogicalName="model-viewer/%(Filename)%(Extension)" />
+    <AndroidNativeLibrary Include="../../artifacts/reconstruction-native/android/$(RuntimeIdentifier)/*.so" Abi="$(ReconstructionAbi)" Link="lib/$(ReconstructionAbi)/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <Target Name="RequireReconstructionRuntime" BeforeTargets="PrepareForBuild" Condition="'$(Configuration)' == 'Release'">
+    <Error Condition="!Exists('../../artifacts/reconstruction-native/android/$(RuntimeIdentifier)/libyunsevo_reconstruction.so')" Text="Build native reconstruction first: scripts/build-reconstruction.ps1 -Runtime $(RuntimeIdentifier)" />
+  </Target>
 </Project>

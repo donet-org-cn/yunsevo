@@ -8,11 +8,13 @@
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="3.119.4" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
+    <None Include="../MyPan.ModelViewer/LICENSE.model-viewer" Link="Notices/model-viewer-LICENSE" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToPublishDirectory="PreserveNewest" />
     <None Update="Notices/**/*" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Web/index.html;Web/app.css;Web/app.js;Web/admin.js;Web/setup.html;Web/setup.js" />
+    <EmbeddedResource Include="../MyPan.ModelViewer/*" LogicalName="MyPan.ModelViewer.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Web/index.html;Web/app.css;Web/app.js;Web/admin.js;Web/reconstruction.js;Web/setup.html;Web/setup.js" />
     <None Include="../../scripts/restore-backup.ps1" Link="restore-backup.ps1" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../docs/backup-and-migration.md" Link="MIGRATION.md" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

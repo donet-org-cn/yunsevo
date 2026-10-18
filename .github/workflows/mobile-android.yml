@@ -4,8 +4,8 @@ permissions:
   contents: read
 jobs:
   android:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    runs-on: windows-2022
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -22,20 +22,21 @@ jobs:
       - name: Install .NET Android workload
         run: dotnet workload install android --skip-manifest-update
       - name: Android SDK platform
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        shell: pwsh
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865"
+      - name: Build CPU and Vulkan reconstruction engine
+        shell: pwsh
+        env:
+          MOBILE_RID: ${{ matrix.rid }}
+        run: ./scripts/build-reconstruction.ps1 -Runtime $env:MOBILE_RID -AndroidNdk "$env:ANDROID_HOME/ndk/29.0.14206865"
       - name: Publish Mono AOT development APK
         shell: pwsh
         env:
           MOBILE_RID: ${{ matrix.rid }}
         run: ./scripts/publish-android.ps1 -Runtime $env:MOBILE_RID -AndroidSdk $env:ANDROID_HOME -JavaSdk $env:JAVA_HOME
       - name: Confirm app and shared core AOT libraries
-        shell: bash
-        env:
-          MOBILE_RID: ${{ matrix.rid }}
-        run: |
-          package="artifacts/mobile/$MOBILE_RID/yunsevo-$MOBILE_RID.apk"
-          unzip -l "$package" | rg 'libaot-MyPan.Mobile.Android.dll.so'
-          unzip -l "$package" | rg 'libaot-MyPan.Mobile.Core.dll.so'
+        shell: pwsh
+        run: Write-Output 'publish-android.ps1 verifies all four Mono AOT assemblies and both reconstruction native libraries inside the APK.'
       - uses: actions/upload-artifact@v4
         with:
           name: yunsevo-${{ matrix.rid }}-development

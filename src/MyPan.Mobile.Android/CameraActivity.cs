@@ -29,6 +29,7 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
     private Handler? handler;
     private Surface? surface;
     private bool opened, capturing, flash, front;
+    private Guid? scanId;
     private CameraGlPipe? gl;
     private Task cameraCleanup = Task.CompletedTask;
     private Rect activeArray = new(0, 0, 1, 1);
@@ -37,6 +38,7 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
     private bool flashAvailable, paused;
     private int sensorOrientation = 90;
     private double exposureStep;
+    private double sensorDiagonal;
     private TaskCompletionSource<Dictionary<string, string>>? photoProperties;
     private MobileOptions options = null!;
     private FolderSelection project = null!;
@@ -49,8 +51,10 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
     {
         base.OnCreate(state);
         var client = AppServices.Client;
-        if (client.Account == null || client.Options.Project == null) { Finish(); return; }
-        options = client.Options; project = options.Project; account = client.AccountKey; photographer = client.Account.Login.User.DisplayName;
+        if (Guid.TryParse(Intent?.GetStringExtra("scan"), out var scan)) scanId = scan;
+        if (client.Account == null || !scanId.HasValue && client.Options.Project == null) { Finish(); return; }
+        options = client.Options; if (scanId.HasValue) { var scanning = ScanStore.Get(scanId.Value); ScanStore.EnsureCollecting(scanId.Value); options = options with { Project = scanning.Folder, IncludeLocation = false, IncludeAddress = false, IncludeWeather = false }; }
+        project = options.Project!; account = client.AccountKey; photographer = client.Account.Login.User.DisplayName;
         BuildCameraUi();
         UpdateOverlay();
     }
@@ -107,7 +111,8 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
     {
         if (IsFinishing || IsDestroyed) return;
         if (shutterView != null) shutterView.Recording = recording || videoStarting;
-        gl?.Watermark(ContextForCapture().Watermark, options);
+        gl?.Watermark(scanId.HasValue ? "" : ContextForCapture().Watermark, options);
+        if (scanId.HasValue) { var guidance = ScanGuidance(); if (message.Text != guidance) message.Text = guidance; }
         if (recording) message.Text = "● 录像中 " + TimeSpan.FromMilliseconds(SystemClock.ElapsedRealtime() - videoBegan).ToString(@"mm\:ss") + " · 松开结束";
         message.PostDelayed(UpdateOverlay, 1000);
     }
@@ -126,6 +131,7 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
                 ?? manager.GetCameraIdList()!.First();
             var characteristics = manager.GetCameraCharacteristics(id);
             sensorOrientation = ((Java.Lang.Integer?)characteristics.Get(CameraCharacteristics.SensorOrientation))?.IntValue() ?? 90;
+            if (characteristics.Get(CameraCharacteristics.SensorInfoPhysicalSize) is global::Android.Util.SizeF physical) sensorDiagonal = Math.Sqrt(physical.Width * physical.Width + physical.Height * physical.Height);
             activeArray = (Rect?)characteristics.Get(CameraCharacteristics.SensorInfoActiveArraySize) ?? new Rect(0, 0, 1, 1);
             selectedMetering = null;
             maxZoom = Math.Clamp(((Java.Lang.Float?)characteristics.Get(CameraCharacteristics.ScalerAvailableMaxDigitalZoom))?.FloatValue() ?? 1, 1, 20);
@@ -148,7 +154,7 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
             var landscape = Resources!.Configuration!.Orientation == global::Android.Content.Res.Orientation.Landscape;
             pipe.PreviewInset(Ui.Dp(this, landscape ? 12 : 200), landscape ? Ui.Dp(this, 150) : 0);
             if (generation != opening || paused) { pipe.Dispose(); return; }
-            gl.Watermark(ContextForCapture().Watermark, options);
+            gl.Watermark(scanId.HasValue ? "" : ContextForCapture().Watermark, options);
             manager.OpenCamera(id, new DeviceCallback(this, opening), handler);
         }
         catch (Exception ex) { CloseCamera(); message.Text = "相机不可用：" + ex.Message; }
@@ -189,6 +195,28 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
     {
         var capture = current;
         if (capture == null) return;
+        if (scanId.HasValue)
+        {
+            try
+            {
+                ScanStore.EnsureCollecting(scanId.Value); var path = Path.Combine(ScanStore.Photos(scanId.Value), "capture-" + capture.Time.ToUnixTimeMilliseconds() + "-" + capture.Id.ToString("N") + ".jpg");
+                await File.WriteAllBytesAsync(path + ".partial", bytes);
+                Dictionary<string, string>? parameters = null;
+                if (photoProperties != null) try { parameters = await photoProperties.Task.WaitAsync(TimeSpan.FromSeconds(2)); } catch (TimeoutException) { }
+                using (var exif = new ExifInterface(path + ".partial"))
+                {
+                    if (parameters != null) foreach (var pair in parameters) exif.SetAttribute(pair.Key, pair.Value);
+                    if (sensorDiagonal > 0 && parameters?.GetValueOrDefault("FocalLength") is { } focal && double.TryParse(focal, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var millimeters))
+                        exif.SetAttribute("FocalLengthIn35mmFilm", Math.Round(millimeters * 43.2666153 / sensorDiagonal).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    exif.SetAttribute("Make", Build.Manufacturer); exif.SetAttribute("Model", Build.Model); exif.SetAttribute("Artist", photographer); exif.SaveAttributes();
+                }
+                File.Move(path + ".partial", path);
+                RunOnUiThread(() => message.Text = ScanGuidance());
+            }
+            catch (Exception ex) { RunOnUiThread(() => Ui.Alert(this, "原片保存未完成", ex.Message)); }
+            finally { capturing = false; current = null; }
+            return;
+        }
         string? output = null; var queued = false;
         try
         {
@@ -235,6 +263,11 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
             { var ready = new ContentValues(); ready.Put(MediaStore.IMediaColumns.IsPending, 0); ContentResolver.Update(uri, ready, null, null); }
         }
         catch { ContentResolver.Delete(uri, null, null); throw; }
+    }
+    private string ScanGuidance()
+    {
+        var count = scanId.HasValue ? ScanStore.Files(scanId.Value).Length : 0;
+        return count + " 张 · " + (count < 24 ? "平视绕拍一圈" : count < 48 ? "略高角度补拍一圈" : "略低角度补拍") + " · 建议步骤，不代表已验证覆盖";
     }
     private void CloseCamera()
     {

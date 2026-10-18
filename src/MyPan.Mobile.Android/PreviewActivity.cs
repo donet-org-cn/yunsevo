@@ -19,6 +19,7 @@ public sealed class PreviewActivity : Activity
     private CancellationTokenSource? loading;
     private ZoomImageView? zoomImage;
     private VideoView? video;
+    private ModelView? modelView;
     private FrameLayout scene = null!;
     private TextView caption = null!, status = null!;
     private Button save = null!, share = null!, details = null!, previous = null!, next = null!;
@@ -73,7 +74,8 @@ public sealed class PreviewActivity : Activity
             entry = download.Entry; savedFile = download.File; savedName = Path.GetFileName(entry.Path); savedMime = CloudMedia.Mime(entry.Path); caption.Text = savedName;
             status.Text = (entry.Origin?.Photographer is { } who ? "拍摄人：" + who.DisplayName + " · " : "") + (entry.Origin?.CapturedUtc ?? entry.ModifiedUtc).ToLocalTime().ToString("yyyy-MM-dd HH:mm");
             scene.RemoveAllViews();
-            if (savedMime.StartsWith("image/", StringComparison.Ordinal))
+            if (savedMime == "model/gltf-binary") { modelView = new(this, download.File); scene.AddView(modelView, new FrameLayout.LayoutParams(-1, -1)); }
+            else if (savedMime.StartsWith("image/", StringComparison.Ordinal))
             {
                 var bitmap = await CloudMedia.DecodeImage(download.File, 4096);
                 if (ct.IsCancellationRequested || opening != generation) { bitmap?.Dispose(); return; }
@@ -116,7 +118,7 @@ public sealed class PreviewActivity : Activity
         await Open(target.Id, target.Path);
     }
     private void ClearMedia()
-    { zoomImage?.ReleaseImage(); zoomImage = null; try { video?.StopPlayback(); } catch (Java.Lang.Exception) { } video = null; scene?.RemoveAllViews(); }
+    { modelView?.Release(); modelView = null; zoomImage?.ReleaseImage(); zoomImage = null; try { video?.StopPlayback(); } catch (Java.Lang.Exception) { } video = null; scene?.RemoveAllViews(); }
     private void ShowDetails()
     {
         if (entry == null || savedFile == null) return;

@@ -16,6 +16,7 @@ internal static class WatermarkPainter
     }
     public static void Draw(Canvas canvas, int width, int height, string text, MobileOptions options)
     {
+        if (string.IsNullOrWhiteSpace(text)) return;
         var style = Styles.Contains(options.WatermarkStyle) ? options.WatermarkStyle : Styles[0];
         var scale = float.IsFinite(options.WatermarkTextScale) ? Math.Clamp(options.WatermarkTextScale, .65f, 1.8f) : 1;
         using var paint = new Paint(PaintFlags.AntiAlias) { Color = TextColor(options), TextSize = Math.Max(14, width * .026f * scale) };

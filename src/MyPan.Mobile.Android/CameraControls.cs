@@ -55,7 +55,7 @@ public sealed partial class CameraActivity
         header.Background = new global::Android.Graphics.Drawables.GradientDrawable(global::Android.Graphics.Drawables.GradientDrawable.Orientation.TopBottom, new[] { Color.Argb(210, 0, 0, 0).ToArgb(), Color.Transparent.ToArgb() });
         header.SetPadding(Ui.Dp(this, 12), Ui.Dp(this, 8), Ui.Dp(this, 12), Ui.Dp(this, 8));
         header.AddView(Icon("close", "关闭相机", Finish));
-        projectCaption = Ui.Text(this, Path.GetFileName(project.Path) + "  ⌄", 15, true); projectCaption.SetTextColor(Color.White); projectCaption.Gravity = GravityFlags.Center; projectCaption.SetSingleLine(true); projectCaption.Ellipsize = global::Android.Text.TextUtils.TruncateAt.End;
+        projectCaption = Ui.Text(this, scanId.HasValue ? "三维采集 · 完成" : Path.GetFileName(project.Path) + "  ⌄", 15, true); projectCaption.SetTextColor(Color.White); projectCaption.Gravity = GravityFlags.Center; projectCaption.SetSingleLine(true); projectCaption.Ellipsize = global::Android.Text.TextUtils.TruncateAt.End;
         projectCaption.Background = Ui.Shape(Color.Argb(115, 15, 24, 30), Ui.Dp(this, 20)); projectCaption.ContentDescription = "切换工程"; projectCaption.Click += (_, _) => _ = PickCameraProject();
         header.AddView(projectCaption, new LinearLayout.LayoutParams(0, Ui.Dp(this, 40), 1) { LeftMargin = Ui.Dp(this, 10), RightMargin = Ui.Dp(this, 10) });
         flashIcon = Icon("flash", "补光灯", () => { if (!flashAvailable) { Toast.MakeText(this, "当前镜头不支持补光灯", ToastLength.Short)!.Show(); return; } flash = !flash; flashIcon.Active = flash; UpdatePreview(); }); header.AddView(flashIcon);
@@ -68,11 +68,11 @@ public sealed partial class CameraActivity
         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal }; row.SetGravity(GravityFlags.CenterVertical);
         if (landscape) { row.Orientation = Orientation.Vertical; row.SetGravity(GravityFlags.CenterHorizontal); }
         void Side(View icon) { var cell = new FrameLayout(this); cell.AddView(icon, new FrameLayout.LayoutParams(Ui.Dp(this, 52), Ui.Dp(this, 52), GravityFlags.Center)); row.AddView(cell, landscape ? new LinearLayout.LayoutParams(-1, 0, 1) : new LinearLayout.LayoutParams(0, Ui.Dp(this, 100), 1)); }
-        Side(Icon("album", "打开云端相册", () => { StartActivity(new Intent(this, typeof(MainActivity)).AddFlags(ActivityFlags.ClearTop | ActivityFlags.SingleTop).PutExtra("tab", "backup")); Finish(); }, 52));
+        Side(Icon("album", "打开云端相册", () => { if (!scanId.HasValue) StartActivity(new Intent(this, typeof(MainActivity)).AddFlags(ActivityFlags.ClearTop | ActivityFlags.SingleTop).PutExtra("tab", "backup")); Finish(); }, 52));
         shutterView = new(this) { ContentDescription = "拍摄，点击拍照，长按录像" }; shutterView.Click += (_, _) => Capture();
         row.AddView(shutterView, new LinearLayout.LayoutParams(Ui.Dp(this, 96), Ui.Dp(this, 96)));
-        Side(Icon("flip", "翻转摄像头", () => { if (capturing || recording || videoStarting || videoStopping) return; front = !front; zoom = 1; CloseCamera(); OpenCamera(); }, 52)); bottom.AddView(row, landscape ? new LinearLayout.LayoutParams(-1, 0, 1) : new LinearLayout.LayoutParams(-1, -2));
-        touchHandler ??= new(Looper.MainLooper!); hold ??= new Java.Lang.Runnable(() => { if (holding && !capturing) { longPressed = true; _ = StartVideo(); } });
+        Side(Icon("flip", "翻转摄像头", () => { if (capturing || recording || videoStarting || videoStopping) return; if (scanId.HasValue) { Ui.Alert(this, "三维采集", "为保持相机标定，采集中固定使用后置主摄。"); return; } front = !front; zoom = 1; CloseCamera(); OpenCamera(); }, 52)); bottom.AddView(row, landscape ? new LinearLayout.LayoutParams(-1, 0, 1) : new LinearLayout.LayoutParams(-1, -2));
+        touchHandler ??= new(Looper.MainLooper!); hold ??= new Java.Lang.Runnable(() => { if (holding && !capturing && !scanId.HasValue) { longPressed = true; _ = StartVideo(); } });
         float startY = 0, startZoom = 1;
         shutterView.Touch += (_, args) =>
         {
@@ -86,11 +86,12 @@ public sealed partial class CameraActivity
             }
             shutterView.Invalidate(); args.Handled = true;
         };
-        message = Ui.Text(this, landscape ? "轻触拍照\n长按录像" : "轻触拍照 · 长按录像", 11); message.SetTextColor(Color.Rgb(204, 214, 221)); message.Gravity = GravityFlags.Center; message.SetMaxLines(landscape ? 2 : 1); message.Ellipsize = global::Android.Text.TextUtils.TruncateAt.End; bottom.AddView(message);
+        message = Ui.Text(this, scanId.HasValue ? ScanGuidance() : landscape ? "轻触拍照\n长按录像" : "轻触拍照 · 长按录像", 11); message.SetTextColor(Color.Rgb(204, 214, 221)); message.Gravity = GravityFlags.Center; message.SetMaxLines(landscape ? 2 : 1); message.Ellipsize = global::Android.Text.TextUtils.TruncateAt.End; bottom.AddView(message);
         root.AddView(bottom, landscape ? new FrameLayout.LayoutParams(Ui.Dp(this, 150), -1, GravityFlags.Right) : new FrameLayout.LayoutParams(-1, -2, GravityFlags.Bottom)); SetContentView(root); UpdateZoomLabel();
     }
     private void CameraSettings()
     {
+        if (scanId.HasValue) { Ui.Alert(this, "三维采集", "保持同一后置镜头、不缩放、不移动物体，缓慢绕拍。至少 6 张，建议 36–72 张；平视、高低角度分圈补拍。点左上角返回扫描页生成模型。原片不会添加水印。"); return; }
         if (capturing || recording || videoStarting || videoStopping) return;
         var choices = new[] { "水印样式与颜色", "录像声音：" + (options.RecordAudio ? "开启" : "关闭"), "保存方式：" + (options.SaveCameraToGallery ? "云端 + 本机相册" : "仅云端"), "上传网络：" + (options.WifiOnly ? "仅 Wi-Fi" : "允许移动网络") };
         var dialog = new global::Android.App.AlertDialog.Builder(this)!.SetTitle("拍摄设置")!.SetItems(choices, (_, args) =>
@@ -110,6 +111,7 @@ public sealed partial class CameraActivity
     { options = value; AppServices.Repository.SetOptions(account, value); gl?.Watermark(ContextForCapture().Watermark, value); }
     private async Task PickCameraProject()
     {
+        if (scanId.HasValue) { Finish(); return; }
         if (capturing || recording || videoStarting || videoStopping) { Toast.MakeText(this, "请先结束当前拍摄", ToastLength.Short)!.Show(); return; }
         try
         {
@@ -127,6 +129,7 @@ public sealed partial class CameraActivity
     }
     private void SetZoom(float value)
     {
+        if (scanId.HasValue) return;
         zoom = Math.Clamp(value, 1, maxZoom); selectedMetering = null; UpdateZoomLabel(); UpdatePreview();
     }
     private void UpdateZoomLabel() { if (zoomLabel != null) zoomLabel.Text = zoom.ToString("0.0") + "×"; }

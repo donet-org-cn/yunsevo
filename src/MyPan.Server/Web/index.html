@@ -9,8 +9,21 @@
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/assets/app.js" defer></script>
   <script src="/assets/admin.js" defer></script>
+  <script src="/assets/reconstruction.js" defer></script>
 </head>
 <body>
+  <dialog id="reconstruction-dialog" class="wide-dialog">
+    <div class="dialog-heading"><h2>三维扫描与模型 · 试验功能</h2><button id="close-reconstruction" class="secondary" type="button">关闭</button></div>
+    <p id="reconstruction-capabilities" role="status"></p>
+    <p class="field-help">从当前云端文件夹选择同一物体的原片（6–120 张）；手机端也可引导绕拍或在本机生成。建议慢速绕拍、多角度补拍，透明和反光物体难以重建。模型为相对尺寸，不用于工程测量。</p>
+    <form id="reconstruction-form"><label>模型名称<input id="reconstruction-name" maxlength="80" required placeholder="例如：水泵设备" autocomplete="off"></label>
+    <label>计算方式<select id="reconstruction-backend"><option value="auto">自动（Vulkan 优先，CPU 回退）</option><option value="cpu">CPU</option><option value="vulkan">Vulkan GPU</option></select></label>
+    <label>精细度<select id="reconstruction-quality"><option value="0">草稿（较快）</option><option value="1">标准（较慢）</option></select></label>
+    <p id="reconstruction-folder" class="field-help"></p><div id="reconstruction-photos"></div>
+    <button id="reconstruction-submit" type="submit" class="primary">提交服务端生成</button></form>
+    <div class="dialog-heading"><h3>我的重建任务</h3><button id="reconstruction-refresh" type="button" class="secondary">刷新</button></div>
+    <div id="reconstruction-jobs"></div><footer class="list-footer"><span id="reconstruction-count"></span><div id="reconstruction-pager" class="pager"></div></footer>
+  </dialog>
   <svg class="symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
     <symbol id="i-cloud" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></symbol><symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-3a7 7 0 0 1 14 0v3m0-17a4 4 0 0 1 0 8m4 9v-3a7 7 0 0 0-3-6"/></symbol><symbol id="i-menu" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5h6l2 2h10v13H3Z"/></symbol>
@@ -73,7 +86,7 @@
     <div class="workspace">
       <header class="topbar"><button id="menu-toggle" class="icon-button mobile-menu" aria-label="打开导航"><svg><use href="#i-menu"/></svg></button><span class="topbar-label">沄序文件云</span><div class="topbar-right"><span class="connection-label"><span class="status-dot"></span>已连接</span><button id="logout-top" class="icon-button" title="断开连接" aria-label="断开连接"><svg><use href="#i-logout"/></svg></button><button id="account-security" class="account-chip" title="账户安全"><span class="avatar">Y</span><span id="account-display">账户</span></button></div></header>
       <main class="content" id="drop-area">
-        <div class="page-heading"><div><p class="eyebrow">MY WORKSPACE</p><h1 id="page-title">我的文件</h1><p id="page-description" class="muted">让文件井然有序，让每台设备保持连接。</p></div><div class="heading-actions" id="file-actions"><button id="new-folder" class="secondary"><span aria-hidden="true">＋</span> 新建文件夹</button><button id="upload-button" class="primary"><svg><use href="#i-upload"/></svg>上传文件</button></div></div>
+        <div class="page-heading"><div><p class="eyebrow">MY WORKSPACE</p><h1 id="page-title">我的文件</h1><p id="page-description" class="muted">让文件井然有序，让每台设备保持连接。</p></div><div class="heading-actions" id="file-actions"><button id="open-reconstruction" class="secondary">三维扫描</button><button id="new-folder" class="secondary"><span aria-hidden="true">＋</span> 新建文件夹</button><button id="upload-button" class="primary"><svg><use href="#i-upload"/></svg>上传文件</button></div></div>
         <section class="summary" aria-label="云盘概况"><div class="summary-icon"><svg><use href="#i-cloud"/></svg></div><div class="summary-copy"><strong>你的文件，已在云端就绪</strong><span>桌面客户端连接后自动同步文件列表，支持按需下载。</span></div><div class="summary-stat"><strong id="total-files">0</strong><span>个文件</span></div><div class="summary-stat"><strong id="total-size">0 B</strong><span>云端文件大小</span></div></section>
         <section class="file-panel" aria-label="文件列表">
           <div class="file-toolbar"><nav id="breadcrumbs" class="breadcrumbs" aria-label="目录路径"></nav><div class="table-tools"><button id="copy-directory" class="text-button copy-directory" hidden>复制目录名</button><label class="search"><svg><use href="#i-search"/></svg><input id="search" type="search" placeholder="搜索当前目录及子目录" aria-label="搜索文件"></label><button id="refresh" class="icon-button" title="刷新文件列表" aria-label="刷新文件列表"><svg><use href="#i-refresh"/></svg></button></div></div>

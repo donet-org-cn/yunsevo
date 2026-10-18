@@ -16,7 +16,7 @@ internal static class CloudMedia
 {
     private static readonly SemaphoreSlim[] files = Enumerable.Range(0, 32).Select(_ => new SemaphoreSlim(1)).ToArray();
     public static bool IsVideo(string path) => new[] { ".mp4", ".mov", ".m4v", ".webm", ".3gp" }.Contains(Path.GetExtension(path).ToLowerInvariant());
-    public static string Mime(string path) => MimeTypeMap.Singleton!.GetMimeTypeFromExtension(Path.GetExtension(path).TrimStart('.').ToLowerInvariant()) ?? "application/octet-stream";
+    public static string Mime(string path) => Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase) ? "model/gltf-binary" : MimeTypeMap.Singleton!.GetMimeTypeFromExtension(Path.GetExtension(path).TrimStart('.').ToLowerInvariant()) ?? "application/octet-stream";
     public static async Task<(CloudEntry Entry, string File)> Download(Guid id, string path, CancellationToken ct, Action<long, long>? progress = null)
     {
         var client = AppServices.Client; var (connection, scope) = client.TransferSession();

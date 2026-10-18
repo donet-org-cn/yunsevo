@@ -99,6 +99,7 @@ internal static class AppServices
                 var added = Client.Options.AutoBackup && AndroidAlbumSource.HasPermission(Context)
                     ? await Client.ScanAlbum(new AndroidAlbumSource(Context), DeviceName, budget.Token) : 0;
                 completed += await Client.Pump(WifiUnavailable, Charging, budget.Token);
+                await ScanRemote.Pump(budget.Token);
                 if (added == 0 || Client.Repository.Jobs(Client.AccountKey).Any(x => x.State == "failed")) break;
             } while (!budget.IsCancellationRequested);
             var pending = Repository.Jobs(Client.AccountKey).Count(x => x.State is not ("completed" or "cancelled"));

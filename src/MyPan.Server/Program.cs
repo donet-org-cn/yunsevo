@@ -26,13 +26,13 @@ var legacyKey = builder.Configuration.GetValue("MyPan:AllowLegacyApiKey", true);
 var maxUpload = builder.Configuration.GetValue<long?>("MyPan:MaxUploadBytes") ?? 20L * 1024 * 1024 * 1024;
 ServerInstallation.ConfigureListener(builder);
 var dataPath = ServerInstallation.DataPath(builder.Configuration);
-var store = new CloudStore(dataPath, apiKey);
+using var store = new CloudStore(dataPath, apiKey);
 using var captureEnvironment = new CaptureEnvironmentService(store, dataPath);
 var uploads = new UploadSessions(store, dataPath, maxUpload, builder.Configuration.GetValue<long?>("MyPan:MaxPendingUploadBytes") ?? 40L * 1024 * 1024 * 1024);
 var audit = new AuditLog(Path.Combine(dataPath, "audit"));
+await using var reconstruction = new ReconstructionJobs(store, audit, dataPath, builder.Configuration["MyPan:ReconstructionEngine"] ?? Path.Combine(AppContext.BaseDirectory, "reconstruction", OperatingSystem.IsWindows() ? "yunsevo-reconstruct.exe" : "yunsevo-reconstruct"));
 await using var protocols = new ProtocolManager(store, audit, dataPath, maxUpload, builder.Configuration["MyPan:SmbGatewayPath"]);
 var app = builder.Build();
-app.Lifetime.ApplicationStopped.Register(store.Dispose);
 const string CookieName = "mypan-session";
 RequestActor Actor(HttpContext context) => (RequestActor)context.Items["actor"]!;
 string Token(HttpContext context) => context.Request.Headers.Authorization.ToString() is var header && header.StartsWith("Bearer ", StringComparison.Ordinal)
@@ -111,6 +111,10 @@ app.Use(async (context, next) =>
 app.UseRateLimiter();
 WebInterface.Map(app);
 WebDav.Map(app, store, protocols, maxUpload);
+app.MapGet("/api/reconstruction/capabilities", async (HttpContext context, CancellationToken ct) => Results.Json(await reconstruction.Capabilities(ct), ApiJson.Default.ReconstructionCapabilities));
+app.MapGet("/api/reconstruction/jobs", (HttpContext context) => reconstruction.List(Actor(context)));
+app.MapPost("/api/reconstruction/jobs", (StartReconstruction request, HttpContext context) => reconstruction.Create(Actor(context), request, context.RequestAborted));
+app.MapDelete("/api/reconstruction/jobs/{id:guid}", (Guid id, bool? purge, HttpContext context) => { reconstruction.Cancel(id, Actor(context), purge ?? false); return Results.NoContent(); });
 app.MapGet("/health", () => Results.Text("MyPan OK"));
 app.MapPost("/api/auth/login", async (LoginRequest request, HttpContext context) =>
 {
@@ -152,6 +156,7 @@ app.MapGet("/api/admin/backup", async (HttpContext context, CancellationToken ct
 {
     var files = await protocols.CaptureBackupFiles(Actor(context), ct);
     foreach (var file in captureEnvironment.BackupFiles(Actor(context))) files.Add(file.Key, file.Value);
+    foreach (var file in reconstruction.BackupFiles(Actor(context))) files.Add(file.Key, file.Value);
     var backup = await store.CreateBackup(Actor(context), apiKey, files, audit, ct);
     return Results.File(backup, "application/zip", "yunsevo-backup-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".zip");
 });

@@ -25,7 +25,7 @@ public sealed partial class CloudStore
     internal void ValidatePhoto(RequestActor actor, string path, MobileUploadMetadata? metadata)
     {
         if (metadata == null) return;
-        if (metadata.Kind is not ("camera" or "album" or "shared")) throw new StoreException(400, "文件来源无效。");
+        if (metadata.Kind is not ("camera" or "album" or "shared" or "scan" or "model")) throw new StoreException(400, "文件来源无效。");
         void Text(string? value, int maximum, bool multiline = false)
         {
             if (value != null && (value.Length > maximum || value.Any(c => char.IsControl(c) && !(multiline && c is '\n' or '\r' or '\t'))))
@@ -75,7 +75,7 @@ public sealed partial class CloudStore
         var project = metadata?.ProjectFolderId is { } id ? snapshot.Entries.Find(x => x.Id == id)?.Path.Split('/')[^1] : metadata?.Project;
         static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         return new(metadata?.Kind ?? "file", identity, DateTimeOffset.UtcNow,
-            metadata?.Kind == "camera" ? identity : null, metadata?.CapturedUtc,
+            metadata?.Kind is "camera" or "scan" ? identity : null, metadata?.CapturedUtc,
             metadata?.ProjectFolderId, project, Clean(metadata?.Place), Clean(metadata?.Note), metadata?.Watermark,
             metadata?.Latitude, metadata?.Longitude, Clean(metadata?.Location), Clean(metadata?.DeviceName), metadata?.CaptureId, sha256, metadata?.Environment);
     }

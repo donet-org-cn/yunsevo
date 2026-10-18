@@ -13,6 +13,10 @@ public sealed record StartUpload(string Path, long Length, string? Version, bool
 public sealed record UploadStatus(Guid Id, long Length, long Offset, int ChunkBytes, DateTimeOffset ExpiresUtc, CloudEntry? Completed = null);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true)]
+[JsonSerializable(typeof(ReconstructionCapabilities))]
+[JsonSerializable(typeof(StartReconstruction))]
+[JsonSerializable(typeof(ReconstructionJob))]
+[JsonSerializable(typeof(List<ReconstructionJob>))]
 [JsonSerializable(typeof(Catalog))]
 [JsonSerializable(typeof(CloudEntry))]
 [JsonSerializable(typeof(CreateFolder))]

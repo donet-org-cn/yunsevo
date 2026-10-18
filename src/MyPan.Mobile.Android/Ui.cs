@@ -71,7 +71,7 @@ internal static class Ui
             "上传人：" + origin.UploadedBy.DisplayName + "（" + origin.UploadedBy.Username + "）",
             "上传时间：" + origin.UploadedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
             origin.DeviceName == null ? null : "设备：" + origin.DeviceName,
-            "来源：" + (origin.Kind switch { "camera" => "工程水印拍照", "album" => "相册备份", "shared" => "其他应用分享", _ => "文件上传" })
+            "来源：" + (origin.Kind switch { "scan" => "三维采集原片", "model" => "三维模型", "camera" => "工程水印拍照", "album" => "相册备份", "shared" => "其他应用分享", _ => "文件上传" })
         }.Where(x => x != null));
     }
 }
