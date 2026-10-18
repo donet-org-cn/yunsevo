@@ -6,6 +6,20 @@
 
 商业品牌使用“沄序 · Yunsevo”，桌面客户端为“沄序 Drive”。新版界面、分页、密码重置和回收站来源记录见 [界面与管理说明](docs/design-and-workspace.md)。现有程序文件名、配置和同步根标识保留兼容。
 
+## 下载与界面
+
+服务端、桌面客户端和无界面客户端的分平台发布包见 [GitHub Releases](https://github.com/hnlyf168/yunsevo/releases)。选择对应系统与 x64/ARM64 架构：server 为服务端，drive 为桌面客户端，headless 为无界面客户端。每个发布包附带运行说明，发布页提供 SHA-256 校验与各平台检查记录。
+
+**客户端 · 多服务器、多同步目录**
+
+![沄序 Drive 客户端](docs/screenshots/client-multiple-servers.png)
+
+**服务端 · 网页文件管理**
+
+![沄序文件云服务端](docs/screenshots/server-files.png)
+
+更多登录、任务向导、托盘、日志、用量、权限、回收站和审计界面见 [完整截图画廊](docs/screenshots.md)。截图使用隔离演示数据，桌面示例来自 Windows。
+
 ## 启动新版
 
 先退出旧服务端，再在项目目录运行：
@@ -122,7 +136,7 @@ $env:MyPan__EnableHttp3='true'
 ./scripts/publish.ps1 -Runtime osx-arm64 -Output artifacts/v2/osx-arm64
 ```
 
-Native AOT 需要在对应操作系统构建。提供 [多平台构建工作流](.github/workflows/native-aot.yml)，覆盖 Windows x64、Linux x64/ARM64、macOS Intel/Apple Silicon，并生成 macOS `.app`。当前环境只完成 Windows 原生包验证；Linux/macOS 的托管代码编译验证与原生运行验证分别记录在 [验证报告](artifacts/v2/verification.json)，未执行的 CI 不视为已通过。macOS 包尚未签名或公证。
+Native AOT 需要在对应操作系统构建。提供 [手动构建工作流](.github/workflows/native-aot.yml) 及 [完整发布工作流](.github/workflows/release.yml)，覆盖 Windows、Linux、macOS 的 x64/ARM64，并生成 macOS `.app`。推送版本标签后，发布工作流在各系统分别构建，检查原生架构、服务启动、账号登录、文件上传下载、客户端同步和真实桌面窗口渲染；全部平台通过后才发布 GitHub Release。每个平台的实际结果以 Release 的 verification 附件与 Actions 记录为准，未通过的 CI 不视为已验证。macOS 包尚未进行 Apple Developer ID 签名或公证。
 
 Linux/macOS 无需安装 PowerShell，也可直接运行 `bash scripts/publish.sh linux-x64` 或 `bash scripts/publish.sh osx-arm64`。CI 的 Unix 包使用 tar.gz 保留可执行权限。
 

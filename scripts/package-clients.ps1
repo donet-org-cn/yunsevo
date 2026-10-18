@@ -21,7 +21,7 @@ foreach ($kind in @('desktop', 'headless')) {
         $relative = $_.FullName.Substring($source.Length + 1).Replace('\', '/')
         # Only runtime files and release notices; never settings, credentials or debug symbols.
         $relative -notmatch '(^|/)(data|credentials|state|activity|[^/]+\.dSYM)(/|$)' -and
-        ($relative -match '(^|/)Notices/' -or $_.Name -match '^(MyPan\.(Desktop|Headless)(\.exe)?|THIRD-PARTY-NOTICES\.md|.*\.(dll|so(\.[0-9.]+)?|dylib|plist|icns|runtimeconfig\.json|deps\.json))$')
+        ($relative -match '(^|/)Notices/' -or $_.Name -match '^(MyPan\.(Desktop|Headless)(\.exe)?|README\.md|client\.example\.json|client\.env\.example|mypan-sync\.service|mypan\.desktop|THIRD-PARTY-NOTICES\.md|.*\.(dll|so(\.[0-9.]+)?|dylib|plist|icns|runtimeconfig\.json|deps\.json))$')
     })
     if ($files.Count -eq 0) { throw "No runtime files in $source" }
     try {

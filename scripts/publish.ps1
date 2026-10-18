@@ -24,6 +24,12 @@ try {
         Get-ChildItem -LiteralPath (Join-Path $destination 'desktop') | Copy-Item -Destination (Join-Path $bundle 'MacOS') -Recurse -Force
         Copy-Item -LiteralPath packaging/macos/Info.plist -Destination (Join-Path $bundle 'Info.plist')
     }
+    Copy-Item -LiteralPath packaging/release/CLIENT.md -Destination (Join-Path $destination 'desktop/README.md')
+    Copy-Item -LiteralPath packaging/release/HEADLESS.md -Destination (Join-Path $destination 'headless/README.md')
+    Copy-Item -LiteralPath THIRD-PARTY-NOTICES.md -Destination (Join-Path $destination 'headless')
+    Copy-Item -LiteralPath packaging/linux/client.example.json,packaging/linux/client.env.example,packaging/linux/mypan-sync.service -Destination (Join-Path $destination 'headless')
+    if ($Runtime.StartsWith('linux-')) { Copy-Item -LiteralPath packaging/linux/mypan.desktop -Destination (Join-Path $destination 'desktop') }
+    if ($Runtime.StartsWith('osx-')) { Copy-Item -LiteralPath packaging/release/CLIENT.md -Destination (Join-Path $destination 'MyPan.app/Contents/MacOS/README.md') }
     & (Join-Path $PSScriptRoot 'package-clients.ps1') -Runtime $Runtime -Output $destination
     Write-Host "Published to $destination ($Runtime). Server/desktop/headless: Native AOT. SMB gateway: self-contained managed .NET."
 }
