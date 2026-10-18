@@ -80,7 +80,7 @@ for (const key of Object.keys(env)) if (key.toLowerCase().startsWith('mypan__'))
 Object.assign(env, { ASPNETCORE_URLS: 'http://'+bindHost+':'+port, MyPan__UnattendedSetup: 'true', MyPan__AdminUsername: 'mobileadmin', MyPan__AdminPassword: ownerPassword,
   MyPan__DataPath: path.join(root, 'server'), MyPan__ApiKeyFile: path.join(root, 'key.txt'), MyPan__InstallationFile: path.join(root, 'settings.json'), Logging__LogLevel__Default: 'Warning' });
 env.MyPan__ReconstructionEngine=path.resolve('artifacts/reconstruction-native/win-x64/yunsevo-reconstruct.exe');
-const server = spawn(path.resolve('artifacts/reconstruction-update/server/MyPan.Server.exe'), [], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn(path.resolve(process.env.MYPAN_TEST_SERVER_EXE??'artifacts/reconstruction-update/server/MyPan.Server.exe'), [], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let serverLog = ''; server.stdout.on('data', b => serverLog += b); server.stderr.on('data', b => serverLog += b);
 let headers, stalledServer; const stalledSockets = new Set();
 const request = async (route, method = 'GET', body = null) => {
@@ -137,6 +137,13 @@ try {
   await until(async()=>(await nodes()).some(x=>x.text==='暂未完成'||x.text?.includes('已从视频筛选')),'scan recording and automatic extraction',90000);
   const ns=await nodes();assert(!ns.some(x=>x.text?.includes('时间轴异常')||x.text?.includes('录像未开始')),'Tap-to-record scan video stops with a valid timeline and enters automatic frame extraction');
   if(ns.some(x=>x.text==='暂未完成'))await click('知道了');
+  const scanHome='/data/data/app.yunsevo.drive/files/sync/scans/';let calibration;
+  for(const id of (await adb('shell','su','0','ls',scanHome)).trim().split(/\s+/)){
+   const session=JSON.parse(await adb('exec-out','su','0','cat',scanHome+id+'/session.json'));if(session.Name!=='VideoScan')continue;
+   const file=(await adb('shell','su','0','ls',scanHome+id)).trim().split(/\s+/).find(x=>x.endsWith('.calibration.json'));
+   if(file)calibration=JSON.parse(await adb('exec-out','su','0','cat',scanHome+id+'/'+file));
+  }
+  assert(calibration?.Focal35mm>=5&&calibration.Focal35mm<=500,'Camera video retains measured crop-adjusted focal calibration');
   await click('‹ 所有扫描');
  }
  await click('新建扫描');await input('例如：水泵设备扫描','PumpScan');await click('创建');await waitNode('引导拍摄 · 无水印原片');assert(true,'Scan creation binds an authorized cloud folder');await screenshot('mobile-3d-scan');
@@ -149,6 +156,7 @@ try {
  await until(async()=>(await nodes()).some(x=>x.text?.includes('停止本机生成')||x.text?.includes('需要处理')),'native foreground reconstruction starts',30000);
  if((await nodes()).some(x=>x.text==='停止本机生成'))await click('停止本机生成');
  await until(async()=>(await nodes()).some(x=>x.text?.includes('需要处理')),'native cancellation or insufficient-overlap failure',45000);assert((await nodes()).some(x=>x.text?.startsWith('6/72 张')),'Failed or cancelled generation preserves all original photographs');
+ assert(!(await nodes()).some(x=>/EntryPointNotFound|Unable to load|yv_reconstruct_v2/.test(x.text??'')),'Native v2 generation API executes without missing symbols');
  if(process.env.MYPAN_TEST_REGEN==='true') {
   const home='/data/data/app.yunsevo.drive/files/sync/scans/';
   const dirs=(await adb('shell','su','0','ls',home)).trim().split(/\s+/);let scanId,session;
@@ -186,6 +194,6 @@ try {
   await adb('shell','monkey','-p','app.yunsevo.drive','-c','android.intent.category.LAUNCHER','1');await waitNode('登录');assert(true,'Offline sign-out persists across an app restart');
  }
  const crash=await adb('logcat','-b','crash','-d');assert(!crash.includes('FATAL EXCEPTION')&&!crash.includes('Fatal signal'),'No Android managed or native crashes');
- await writeFile(path.join(root,'verification.json'),JSON.stringify({success:true,checks,apkSha256:createHash('sha256').update(await readFile('artifacts/reconstruction-update/mobile/android-x64/yunsevo-android-x64.apk')).digest('hex')},null,2));console.log('Verification:',root);
+ await writeFile(path.join(root,'verification.json'),JSON.stringify({success:true,checks,apkSha256:createHash('sha256').update(await readFile(process.env.MYPAN_TEST_APK??'artifacts/reconstruction-update/mobile/android-x64/yunsevo-android-x64.apk')).digest('hex')},null,2));console.log('Verification:',root);
 }catch(e){await screenshot('failure').catch(()=>{});await writeFile(path.join(root,'failure.json'),JSON.stringify({error:e.stack,checks},null,2));throw e;}
 finally{for(const socket of stalledSockets)socket.destroy();stalledServer?.close();await adb('shell','am','force-stop','app.yunsevo.drive').catch(()=>{});server.kill();await writeFile(path.join(root,'server.log'),serverLog);}

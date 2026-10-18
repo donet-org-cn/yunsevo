@@ -145,9 +145,11 @@ public sealed partial class CameraActivity
         request.Set(CaptureRequest.ControlAfMode!, Java.Lang.Integer.ValueOf((int)(afRegions > 0 ? recording ? ControlAFMode.ContinuousVideo : ControlAFMode.ContinuousPicture : ControlAFMode.Off)));
         request.Set(CaptureRequest.ScalerCropRegion!, Crop());
         request.Set(CaptureRequest.FlashMode!, Java.Lang.Integer.ValueOf((int)(flash && flashAvailable ? FlashMode.Torch : FlashMode.Off)));
-        if (selectedMetering != null)
+        var metering = selectedMetering;
+        if (metering == null && scanId.HasValue) { var crop = Crop(); var w = Math.Max(2, crop.Width() / 3); var h = Math.Max(2, crop.Height() / 3); metering = new MeteringRectangle(new Rect(crop.CenterX()-w/2, crop.CenterY()-h/2, crop.CenterX()+w/2, crop.CenterY()+h/2), 900); }
+        if (metering != null)
         {
-            using var regions = Java.Lang.Object.FromArray(new[] { selectedMetering });
+            using var regions = Java.Lang.Object.FromArray(new[] { metering });
             if (aeRegions > 0) request.Set(CaptureRequest.ControlAeRegions!, regions);
             if (afRegions > 0) request.Set(CaptureRequest.ControlAfRegions!, regions);
         }
@@ -184,7 +186,7 @@ public sealed partial class CameraActivity
                     session.Capture(preview.Build(), null, handler);
                     preview.Set(CaptureRequest.ControlAfTrigger!, Java.Lang.Integer.ValueOf((int)ControlAFTrigger.Idle));
                 }
-                session.SetRepeatingRequest(preview.Build(), null, handler);
+                session.SetRepeatingRequest(preview.Build(), scanVideo ? new PreviewCalibration(this) : null, handler);
                 RunOnUiThread(() => message.Text = afRegions > 0 ? "已选择对焦区域" : "已选择测光区域 · 当前镜头为固定焦距");
                 handler.PostDelayed(UpdatePreview, 2500);
             }

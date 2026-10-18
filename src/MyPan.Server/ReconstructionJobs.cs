@@ -162,13 +162,13 @@ internal sealed class ReconstructionJobs : IAsyncDisposable
                         var photo = work.Request.Photos[i]; var download = await store.Download(actor, photo.Id, photo.Version, timeout.Token); await using var source = download.Stream;
                         await using var file = File.Create(Path.Combine(input, $"view-{i:D3}" + Path.GetExtension(download.Entry.Path).ToLowerInvariant())); await source.CopyToAsync(file, timeout.Token);
                     }
-                    using var p = ProcessFor(); p.StartInfo.ArgumentList.Add(input); p.StartInfo.ArgumentList.Add(output); p.StartInfo.ArgumentList.Add(work.Request.Backend); p.StartInfo.ArgumentList.Add(work.Request.Quality.ToString(System.Globalization.CultureInfo.InvariantCulture)); p.Start();
+                    using var p = ProcessFor(); p.StartInfo.ArgumentList.Add(input); p.StartInfo.ArgumentList.Add(output); p.StartInfo.ArgumentList.Add(work.Request.Backend); p.StartInfo.ArgumentList.Add(work.Request.Quality.ToString(System.Globalization.CultureInfo.InvariantCulture)); p.StartInfo.ArgumentList.Add(work.Request.Subject); p.Start();
                     var lastError = "";
                     var errors = Task.Run(async () => { while (await p.StandardError.ReadLineAsync(timeout.Token) is { } line) lastError = line[..Math.Min(line.Length, 600)]; }, timeout.Token);
                     var progress = Task.Run(async () => { var last = -1; while (await p.StandardOutput.ReadLineAsync(timeout.Token) is { } line) { var parts = line.Split('\t', 2); if (parts.Length == 2 && int.TryParse(parts[0], out var n) && n != last) { last = n; Update(id, "running", n, ReconstructionMessages.Progress(parts[1])); } } }, timeout.Token);
                     try { await p.WaitForExitAsync(timeout.Token); await Task.WhenAll(errors, progress); }
                     finally { if (!p.HasExited) { p.Kill(true); await p.WaitForExitAsync(CancellationToken.None); } }
-                    if (p.ExitCode != 0 || !File.Exists(output)) throw new IOException("重建未完成：" + (lastError.Length == 0 ? "照片重叠或纹理不足，请补拍。" : lastError));
+                    if (p.ExitCode != 0 || !File.Exists(output)) throw new IOException("重建未完成：" + (lastError.Length == 0 ? "照片重叠或纹理不足，请补拍。" : ReconstructionMessages.Error(lastError)));
                     timeout.Token.ThrowIfCancellationRequested(); actor = store.ReconstructionActor(work.Job.UserId, work.WebAdmin); destination = Validate(actor, work.Request);
                     await using var modelStream = File.OpenRead(output);
                     var path = destination + "/" + work.Job.Name + "-" + id.ToString("N")[..8] + ".glb";

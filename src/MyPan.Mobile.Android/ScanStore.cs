@@ -10,7 +10,9 @@ namespace MyPan.Mobile.Android;
 internal sealed record ScanSession(Guid Id, string Account, string Name, FolderSelection Folder, DateTimeOffset CreatedUtc,
     string Subject = "object", string State = "collecting", int Progress = 0, string Message = "添加原片或开始引导拍摄", string Backend = "auto",
     Guid? RemoteJob = null, List<Guid>? UploadJobs = null, Guid? ModelUpload = null, Guid? RemoteRequestId = null, List<string>? Inputs = null, int Quality = 0);
+internal sealed record ScanVideoCalibration(double Focal35mm);
 [JsonSerializable(typeof(ScanSession))]
+[JsonSerializable(typeof(ScanVideoCalibration))]
 internal partial class ScanJson : JsonSerializerContext;
 internal static class ScanStore
 {
@@ -84,14 +86,14 @@ internal static partial class ReconstructionNative
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate int Progress(nint user, int percent, nint text);
     [DllImport("yunsevo_reconstruction", CallingConvention = CallingConvention.Cdecl)] private static extern nint yv_capabilities();
     [DllImport("yunsevo_reconstruction", CallingConvention = CallingConvention.Cdecl)] private static extern nint yv_last_error();
-    [DllImport("yunsevo_reconstruction", CallingConvention = CallingConvention.Cdecl)] private static extern int yv_reconstruct(
+    [DllImport("yunsevo_reconstruction", CallingConvention = CallingConvention.Cdecl)] private static extern int yv_reconstruct_v2(
         [MarshalAs(UnmanagedType.LPUTF8Str)] string input, [MarshalAs(UnmanagedType.LPUTF8Str)] string output,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string backend, int quality, Progress progress, nint user);
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string backend, int quality, [MarshalAs(UnmanagedType.LPUTF8Str)] string subject, Progress progress, nint user);
     public static ReconstructionCapabilities Capabilities()
     {
         try { return JsonSerializer.Deserialize(Marshal.PtrToStringUTF8(yv_capabilities())!, ApiJson.Default.ReconstructionCapabilities)!; }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException) { return new(false, false, Error: "当前安装包未包含本机重建引擎。"); }
     }
     public static void Generate(Guid id, string backend, Progress progress)
-    { var rc = yv_reconstruct(ScanStore.Photos(id), ScanStore.Model(id), backend, ScanStore.Get(id).Quality, progress, 0); GC.KeepAlive(progress); if (rc != 0) throw new IOException(Marshal.PtrToStringUTF8(yv_last_error()) ?? "重建未完成。"); }
+    { var scan = ScanStore.Get(id); var rc = yv_reconstruct_v2(ScanStore.Photos(id), ScanStore.Model(id), backend, scan.Quality, scan.Subject, progress, 0); GC.KeepAlive(progress); if (rc != 0) throw new IOException(ReconstructionMessages.Error(Marshal.PtrToStringUTF8(yv_last_error()) ?? "重建未完成。")); }
 }

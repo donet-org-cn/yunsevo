@@ -8,6 +8,7 @@ import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", default=".test-data/reconstruction/synthetic48")
+parser.add_argument("--handheld", action="store_true", help="Uneven orbit, camera roll and framing jitter; poses are still withheld")
 args = parser.parse_args()
 root = Path(args.output)
 root.mkdir(parents=True, exist_ok=True)
@@ -32,11 +33,17 @@ for n in range(6):
     textures.append(texture)
 for i in range(48):
     theta = 2 * math.pi * (i % 24) / 24
-    elevation = math.radians(15 if i < 24 else 38)
+    elevation = math.radians((15 if i < 24 else 38) + (5*math.sin(theta*4) if args.handheld else 0))
     center = np.array([5 * math.cos(elevation) * math.cos(theta), -5 * math.sin(elevation), 5 * math.cos(elevation) * math.sin(theta)])
-    z = -center / np.linalg.norm(center)
+    if args.handheld: center += np.array([.12*math.sin(i*1.7), .10*math.cos(i*1.3), .1*math.sin(i*.9)])
+    target = np.array([.08*math.sin(i*1.1), .07*math.cos(i*.8), 0]) if args.handheld else np.zeros(3)
+    z = target-center; z /= np.linalg.norm(z)
     x = np.cross(z, np.array([0., -1, 0])); x /= np.linalg.norm(x)
-    rotation = np.array([x, np.cross(z, x), z]); translation = -rotation @ center
+    rotation = np.array([x, np.cross(z, x), z])
+    if args.handheld:
+        roll = math.radians(9*math.sin(theta*3+1)); c,s = math.cos(roll),math.sin(roll)
+        rotation = np.array([[c,-s,0],[s,c,0],[0,0,1]]) @ rotation
+    translation = -rotation @ center
     image = np.full((side, side, 3), 245, np.uint8)
     order = sorted(range(6), key=lambda n: np.mean((rotation @ faces[n].T + translation[:, None])[2]), reverse=True)
     for n in order:

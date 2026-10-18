@@ -76,7 +76,7 @@ public sealed class ScanActivity : Activity
         body.AddView(Ui.Text(this, scan.Name, 22, true)); body.AddView(Ui.Text(this, Ui.PathLabel(scan.Folder.Path) + " · " + (scan.Subject == "object" ? "物体／设备" : "房间／现场（试验）"), 13));
         body.AddView(Ui.Text(this, files.Length + "/72 张原始照片 · " + State(scan.State), 16, true));
         var progress = new ProgressBar(this, null, global::Android.Resource.Attribute.ProgressBarStyleHorizontal) { Max = 100, Progress = scan.Progress }; body.AddView(progress);
-        var message = Ui.Text(this, scan.Message, 13); message.SetTextIsSelectable(true); body.AddView(message);
+        var message = Ui.Text(this, ReconstructionMessages.Error(scan.Message), 13); message.SetTextIsSelectable(true); body.AddView(message);
         var working = scan.State is "running" or "remote" or "uploading" or "staging";
         if (!working && !File.Exists(ScanStore.Model(scan.Id)) && !scan.RemoteJob.HasValue && scan.Inputs == null)
         {

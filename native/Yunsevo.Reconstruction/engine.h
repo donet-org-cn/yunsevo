@@ -10,3 +10,6 @@ YV_EXPORT const char* yv_capabilities();
 YV_EXPORT int yv_reconstruct(const char* input, const char* output, const char* backend,
     int quality, YvProgress progress, void* user);
 YV_EXPORT const char* yv_last_error();
+
+YV_EXPORT int yv_reconstruct_v2(const char* input, const char* output, const char* backend,
+    int quality, const char* subject, YvProgress progress, void* user);

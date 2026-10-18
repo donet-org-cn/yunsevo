@@ -63,17 +63,22 @@ static bool triangulate(Track&track,const std::vector<Camera>&cs,double f,double
  cv::triangulatePoints(projection(cs[a]),projection(cs[b]),aa,bb,point);point.convertTo(point,CV_64F);
  double w=point.at<double>(3);if(std::abs(w)<1e-9)return false;Point3d p(point.at<double>(0)/w,point.at<double>(1)/w,point.at<double>(2)/w);
  if(!std::isfinite(p.x+p.y+p.z)||cv::norm(p)>1e5)return false;
- for(auto[i,k]:track.observations)if(cs[i].registered&&reprojection(cs[i],p,cs[i].features[k].pt,f,mid)>4)return false;
+ int observed=0,inliers=0;for(auto[i,k]:track.observations)if(cs[i].registered){observed++;if(reprojection(cs[i],p,cs[i].features[k].pt,f,mid)<4)inliers++;}
+ if(inliers<2||inliers<observed*.7)return false;
  Vec3d r1=Vec3d(p.x,p.y,p.z)-center(cs[a]),r2=Vec3d(p.x,p.y,p.z)-center(cs[b]);double cosine=r1.dot(r2)/(cv::norm(r1)*cv::norm(r2));if(cosine>.99985)return false;
  track.point=p;track.good=true;return true;
 }
-static std::vector<Track> sfm(std::vector<Camera>&cs,double f,Progress report){
+#include "bundle_adjustment.h"
+#include "resection.h"
+static std::vector<Track> sfm(std::vector<Camera>&cs,double& f,bool estimateFocal,bool object,Progress report){
  int count=(int)cs.size(),total=0;const double mid=cs[0].gray.cols*.5;
- auto sift=cv::SIFT::create(5000);cv::setNumThreads(2);
- for(int i=0;i<count;i++){cs[i].offset=total;sift->detectAndCompute(cs[i].gray,cv::noArray(),cs[i].features,cs[i].desc);total+=(int)cs[i].features.size();report(3+10*i/count,"features "+std::to_string(i+1)+"/"+std::to_string(count));}
+ auto sift=cv::SIFT::create(6000);cv::setNumThreads(2);
+ for(int i=0;i<count;i++){cs[i].offset=total;Mat mask=Mat::zeros(cs[i].gray.size(),CV_8U);auto rect=cs[i].photoRect;if(object){int dx=rect.width/12,dy=rect.height/40;rect=cv::Rect(rect.x+dx,rect.y+dy,rect.width-2*dx,rect.height-2*dy);}mask(rect).setTo(255);sift->detectAndCompute(cs[i].gray,mask,cs[i].features,cs[i].desc);total+=(int)cs[i].features.size();report(3+10*i/count,"features "+std::to_string(i+1)+"/"+std::to_string(count));}
  std::vector<int> parent(total);std::iota(parent.begin(),parent.end(),0);
+ std::vector<std::array<uint64_t,2>> membership(total,std::array<uint64_t,2>{0,0});
+ for(int i=0;i<count;i++)for(size_t k=0;k<cs[i].features.size();k++)membership[cs[i].offset+k][i/64]|=1ull<<(i%64);
  auto root=[&](int n){while(parent[n]!=n){parent[n]=parent[parent[n]];n=parent[n];}return n;};
- std::vector<Pair> pairs;cv::BFMatcher matcher(cv::NORM_L2);int compared=0;
+ std::vector<Pair> pairs;cv::FlannBasedMatcher matcher(cv::makePtr<cv::flann::KDTreeIndexParams>(4),cv::makePtr<cv::flann::SearchParams>(96));int compared=0;
  for(int a=0;a<count;a++)for(int b=a+1;b<count;b++){
   if(b-a>6&&!(a<3&&b>=count-3))continue;if(cs[a].desc.empty()||cs[b].desc.empty())continue;
   std::vector<std::vector<cv::DMatch>> matches;matcher.knnMatch(cs[a].desc,cs[b].desc,matches,2);Pair pair{a,b};std::vector<Point2f> ap,bp;
@@ -85,7 +90,7 @@ static std::vector<Track> sfm(std::vector<Camera>&cs,double f,Progress report){
   Matx33d R;
   for(int y=0;y<3;y++)for(int x=0;x<3;x++)R(y,x)=pair.R.at<double>(y,x);
   for(size_t i=0;i<pair.matches.size();i++)if(trackMask.at<unsigned char>((int)i)){
-   auto m=pair.matches[i];keep.push_back(m);int ra=root(cs[a].offset+m.queryIdx),rb=root(cs[b].offset+m.trainIdx);if(ra!=rb)parent[rb]=ra;
+   auto m=pair.matches[i];keep.push_back(m);int ra=root(cs[a].offset+m.queryIdx),rb=root(cs[b].offset+m.trainIdx);if(ra!=rb&&!(membership[ra][0]&membership[rb][0])&&!(membership[ra][1]&membership[rb][1])){parent[rb]=ra;membership[ra][0]|=membership[rb][0];membership[ra][1]|=membership[rb][1];}
    Vec3d u((ap[i].x-mid)/f,(ap[i].y-mid)/f,1),v((bp[i].x-mid)/f,(bp[i].y-mid)/f,1);v=R.t()*v;angles.push_back(std::acos(std::clamp(u.dot(v)/(cv::norm(u)*cv::norm(v)),-1.,1.))*180/CV_PI);
   }
   std::sort(angles.begin(),angles.end());double angle=angles.empty()?0:angles[angles.size()/2];
@@ -95,47 +100,60 @@ static std::vector<Track> sfm(std::vector<Camera>&cs,double f,Progress report){
  }
  if(pairs.empty())throw std::runtime_error("No overlapping views. Use sharp, textured photos with 70% overlap.");
  auto initial=std::max_element(pairs.begin(),pairs.end(),[](const Pair&a,const Pair&b){return a.score<b.score;});if(initial->score<=0)throw std::runtime_error("Insufficient camera movement / parallax");
- report(27,"initial pair "+std::to_string(initial->a)+" / "+std::to_string(initial->b)+" score "+std::to_string(initial->score));
- cs[initial->a].registered=cs[initial->b].registered=true;
- for(int y=0;y<3;y++){cs[initial->b].t[y]=initial->t.at<double>(y);for(int x=0;x<3;x++)cs[initial->b].R(y,x)=initial->R.at<double>(y,x);}
  std::map<int,Track> grouped;std::set<int> bad;
  for(int i=0;i<count;i++)for(int k=0;k<(int)cs[i].features.size();k++){int r=root(cs[i].offset+k);auto&tr=grouped[r];if(tr.observations.count(i))bad.insert(r);tr.observations[i]=k;}
- std::vector<Track> tracks;for(auto&[r,tr]:grouped)if(!bad.count(r)&&tr.observations.size()>=2)tracks.push_back(std::move(tr));
- for(auto&tr:tracks)triangulate(tr,cs,f,mid);
- Mat K=(cv::Mat_<double>(3,3)<<f,0,mid,0,f,mid,0,0,1);
- std::set<int> rejected;
+ std::vector<Track> baseTracks;for(auto&[r,tr]:grouped)if(!bad.count(r)&&tr.observations.size()>=2)baseTracks.push_back(std::move(tr));
+ std::vector<Pair*> seeds{&*initial};
+ for(int region=0;region<3;region++){Pair*best=nullptr;for(auto&p:pairs)if(p.score>0&&p.a*3/count==region&&(!best||p.score>best->score))best=&p;if(best&&std::find(seeds.begin(),seeds.end(),best)==seeds.end())seeds.push_back(best);}
+ std::vector<Camera> bestCameras;std::vector<Track> bestTracks;int bestRegistered=0;size_t bestPoints=0;double bestFocal=f,initialFocal=f;
+ std::vector<double> guesses{f};if(estimateFocal){guesses.push_back(cs[0].gray.cols*.75);guesses.push_back(cs[0].gray.cols*.55);}
+ int attempts=0;
+ for(double guess:guesses){for(auto*seed:seeds){
+  if(++attempts>9)break;f=guess;for(auto&c:cs){c.registered=false;c.R=Matx33d::eye();c.t=Vec3d(0,0,0);}
+  std::vector<Point2f> ap,bp;for(auto&m:seed->matches){ap.push_back(cs[seed->a].features[m.queryIdx].pt);bp.push_back(cs[seed->b].features[m.trainIdx].pt);}
+  Mat mask,E=cv::findEssentialMat(ap,bp,f,cv::Point2d(mid,mid),cv::RANSAC,.999,1.5,mask),R,t;if(E.empty()||E.rows!=3||cv::recoverPose(E,ap,bp,R,t,f,cv::Point2d(mid,mid),mask)<30)continue;
+  report(27,"initial pair "+std::to_string(seed->a)+" / "+std::to_string(seed->b)+" focal "+std::to_string(f)+" attempt "+std::to_string(attempts));
+  cs[seed->a].registered=cs[seed->b].registered=true;for(int y=0;y<3;y++){cs[seed->b].t[y]=t.at<double>(y);for(int x=0;x<3;x++)cs[seed->b].R(y,x)=R.at<double>(y,x);}
+  auto tracks=baseTracks;for(auto&tr:tracks)triangulate(tr,cs,f,mid);
+  Mat K=(cv::Mat_<double>(3,3)<<f,0,mid,0,f,mid,0,0,1);
+ std::set<int> rejected;bool rescued=false;
  for(int step=0;step<count*2;step++){
   int best=-1;std::vector<cv::Point3f> objects;std::vector<Point2f> pixels;
   for(int i=0;i<count;i++)if(!cs[i].registered&&!rejected.count(i)){std::vector<cv::Point3f> op;std::vector<Point2f> ip;for(auto&tr:tracks)if(tr.good&&tr.observations.count(i)){op.emplace_back(tr.point);ip.push_back(cs[i].features[tr.observations.at(i)].pt);}if(op.size()>objects.size()){best=i;objects=std::move(op);pixels=std::move(ip);}}
-  if(best<0||objects.size()<18)break;report(28,"pnp view "+std::to_string(best)+" points "+std::to_string(objects.size()));
+  if(best<0||objects.size()<18){if(!rescued){bundleAdjust(cs,tracks,f,seed->a,seed->b,estimateFocal,report,10);K.at<double>(0,0)=K.at<double>(1,1)=f;for(auto&tr:tracks)if(!tr.good)triangulate(tr,cs,f,mid);rejected.clear();rescued=true;continue;}break;}report(28,"pnp view "+std::to_string(best)+" points "+std::to_string(objects.size()));
   Mat r,t,inliers;if(!cv::solvePnPRansac(objects,pixels,K,cv::noArray(),r,t,false,1000,3,.999,inliers,cv::SOLVEPNP_EPNP)||inliers.rows<18){report(28,"pnp rejected "+std::to_string(best)+" inliers "+std::to_string(inliers.rows));rejected.insert(best);continue;}
   std::vector<cv::Point3f> op;std::vector<Point2f> ip;for(int k=0;k<inliers.rows;k++){int n=inliers.at<int>(k);op.push_back(objects[n]);ip.push_back(pixels[n]);}cv::solvePnPRefineLM(op,ip,K,cv::noArray(),r,t);
   Mat R;cv::Rodrigues(r,R);for(int y=0;y<3;y++){cs[best].t[y]=t.at<double>(y);for(int x=0;x<3;x++)cs[best].R(y,x)=R.at<double>(y,x);}cs[best].registered=true;rejected.clear();
   for(auto&tr:tracks)if(!tr.good)triangulate(tr,cs,f,mid);
   report(28+step*10/count,"camera registration "+std::to_string(step+3)+"/"+std::to_string(count));
  }
- int registered=0;for(auto&c:cs)registered+=c.registered;
- if(registered<std::max(4,(int)std::ceil(count*.7)))throw std::runtime_error("Only "+std::to_string(registered)+"/"+std::to_string(count)+" cameras registered. Add intermediate overlapping views.");
- // Alternating robust pose/point refinement. Never add invented geometry for unregistered photos.
- for(int pass=0;pass<3;pass++){
-  for(int i=0;i<count;i++)if(cs[i].registered&&i!=initial->a&&i!=initial->b){
-   std::vector<cv::Point3f> op;std::vector<Point2f> ip;for(auto&tr:tracks)if(tr.good&&tr.observations.count(i)&&reprojection(cs[i],tr.point,cs[i].features[tr.observations.at(i)].pt,f,mid)<4){op.emplace_back(tr.point);ip.push_back(cs[i].features[tr.observations.at(i)].pt);}
-   if(op.size()>=18){Mat r,t(cs[i].t);cv::Rodrigues(cs[i].R,r);cv::solvePnPRefineLM(op,ip,K,cv::noArray(),r,t);Mat R;cv::Rodrigues(r,R);for(int y=0;y<3;y++){cs[i].t[y]=t.at<double>(y);for(int x=0;x<3;x++)cs[i].R(y,x)=R.at<double>(y,x);}}
-  }
-  for(auto&tr:tracks){tr.good=false;triangulate(tr,cs,f,mid);}report(38+pass,"refining camera geometry");
- }
+
+  int registered=0;for(auto&c:cs)registered+=c.registered;
+  if(registered>=4&&registered<count*.94){recoverViews(cs,tracks,f,report);registered=0;for(auto&c:cs)registered+=c.registered;}
+  size_t good=std::count_if(tracks.begin(),tracks.end(),[](const auto&t){return t.good;});
+  report(38,"registration candidate "+std::to_string(registered)+"/"+std::to_string(count)+" points "+std::to_string(good)+" focal "+std::to_string(f));
+  if(registered>bestRegistered||(registered==bestRegistered&&good>bestPoints)){bestCameras=cs;bestTracks=std::move(tracks);bestFocal=f;bestRegistered=registered;bestPoints=good;}
+  if(bestRegistered>=std::ceil(count*.94))break;
+ }if(bestRegistered>=std::ceil(count*.94))break;}
+ if(bestRegistered<std::max(4,(int)std::ceil(count*.7)))throw std::runtime_error("Only "+std::to_string(bestRegistered)+"/"+std::to_string(count)+" cameras registered after multiple initialization attempts. Add intermediate overlapping views.");
+ cs=std::move(bestCameras);auto tracks=std::move(bestTracks);f=bestFocal;
+ // Anchor the strongest baseline in the selected reconstruction, then refine all poses jointly.
+ int anchor=-1,baseline=-1;for(int i=0;i<count;i++)if(cs[i].registered){if(anchor<0)anchor=i;else if(baseline<0)baseline=i;}
+ bundleAdjust(cs,tracks,f,anchor,baseline,estimateFocal,report,15);
+ for(auto&tr:tracks)if(tr.good){int support=0;for(auto it=tr.observations.begin();it!=tr.observations.end();){auto[i,k]=*it;if(cs[i].registered){if(reprojection(cs[i],tr.point,cs[i].features[k].pt,f,mid)>4){it=tr.observations.erase(it);continue;}support++;}++it;}tr.good=support>=2;}
  return tracks;
 }
 struct Vertex{float x,y,z,nx,ny,nz,r,g,b;};
 
-static void fuse(const std::vector<Camera>& cameras,const std::vector<Mat>& colors,const std::vector<std::vector<float>>& depths,int side,float f,int quality,std::vector<Vertex>& vertices,std::vector<uint32_t>& indices,Progress report){
+static void fuse(const Vec3d* objectCenter,double objectRadius,const std::vector<Camera>& cameras,const std::vector<Mat>& colors,const std::vector<std::vector<float>>& depths,int side,float f,int quality,std::vector<Vertex>& vertices,std::vector<uint32_t>& indices,Progress report){
  if(vertices.size()<1000)throw std::runtime_error("Too few consistent depth samples");
  float lo[3],hi[3];std::vector<float> values;values.reserve(vertices.size());
  for(int axis=0;axis<3;axis++){
   values.clear();for(auto&v:vertices)values.push_back(axis==0?v.x:axis==1?v.y:v.z);
   size_t a=values.size()/100,b=values.size()*99/100;std::nth_element(values.begin(),values.begin()+a,values.end());lo[axis]=values[a];std::nth_element(values.begin(),values.begin()+b,values.end());hi[axis]=values[b];
  }
- const int N=quality?160:112;float step=std::max({hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2]})/(N-10),trunc=step*3.5f;
+ if(objectCenter)for(int a=0;a<3;a++){double sign=a? -1:1;lo[a]=(float)(sign*(*objectCenter)[a]-objectRadius);hi[a]=(float)(sign*(*objectCenter)[a]+objectRadius);}
+ const int N=quality?192:144;float step=std::max({hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2]})/(N-10),trunc=step*3.5f;
  if(!std::isfinite(step)||step<=0)throw std::runtime_error("Invalid reconstruction bounds");
  for(int a=0;a<3;a++)lo[a]-=step*5;
  struct Voxel{float sdf=1,r=0,g=0,b=0;unsigned short weight=0;};std::vector<Voxel> grid((size_t)N*N*N);
@@ -183,14 +201,16 @@ static void fuse(const std::vector<Camera>& cameras,const std::vector<Mat>& colo
 #include "texture_mesh.h"
 const char* yv_last_error(){return errorText.c_str();}
 const char* yv_capabilities(){try{VulkanDepth vk;capabilities="{\"cpu\":true,\"vulkan\":true,\"device\":\""+safe(vk.name())+"\",\"experimental\":true}";}catch(const std::exception&e){capabilities="{\"cpu\":true,\"vulkan\":false,\"reason\":\""+safe(e.what())+"\",\"experimental\":true}";}return capabilities.c_str();}
-int yv_reconstruct(const char*input,const char*output,const char*requested,int quality,YvProgress callback,void*user){
+int yv_reconstruct(const char*input,const char*output,const char*requested,int quality,YvProgress callback,void*user){return yv_reconstruct_v2(input,output,requested,quality,"object",callback,user);}
+int yv_reconstruct_v2(const char*input,const char*output,const char*requested,int quality,const char*subject,YvProgress callback,void*user){
  errorText.clear();try{
+  const bool object=subject&&std::string(subject)=="object";if(!subject||(!object&&std::string(subject)!="scene"))throw std::runtime_error("Unsupported scan subject");
   Progress report{callback,user};std::string backend=requested?requested:"auto";if(backend!="auto"&&backend!="cpu"&&backend!="vulkan")throw std::runtime_error("Unsupported compute backend");
   std::unique_ptr<VulkanDepth> gpu;if(backend!="cpu")try{gpu=std::make_unique<VulkanDepth>();}catch(const std::exception&e){if(backend=="vulkan")throw;report(0,std::string("Vulkan unavailable; CPU fallback: ")+e.what());}
   backend=gpu?"vulkan: "+gpu->name():"cpu";report(1,backend);
   std::vector<fs::path> paths;for(auto&it:fs::directory_iterator(fs::u8path(input))){if(!it.is_regular_file())continue;std::string ext=it.path().extension().string();std::transform(ext.begin(),ext.end(),ext.begin(),::tolower);if(ext==".jpg"||ext==".jpeg"||ext==".png")paths.push_back(it.path());}
   std::sort(paths.begin(),paths.end());if(paths.size()<6||paths.size()>120)throw std::runtime_error("Use 6 to 120 photos (24 to 72 recommended)");
-  const int side=768,dense=quality?384:256;double focal=side*1.1;
+  const int side=1024,dense=quality?384:256;double focal=side*1.1;
   std::vector<double> measuredFocal;
   std::vector<Camera> cameras;for(auto&p:paths){
    if(fs::file_size(p)>40*1024*1024)throw std::runtime_error("Photo exceeds 40 MB");
@@ -200,21 +220,32 @@ int yv_reconstruct(const char*input,const char*output,const char*requested,int q
   }
   if(!measuredFocal.empty()){std::sort(measuredFocal.begin(),measuredFocal.end());focal=measuredFocal[measuredFocal.size()/2];if(measuredFocal.back()/measuredFocal.front()>1.12)throw std::runtime_error("Mixed focal lengths: use one camera and fixed zoom for the whole scan");report(2,"EXIF focal calibration "+std::to_string(focal));}
   else report(2,"No EXIF focal calibration; using estimated focal length. If reconstruction fails, recapture with guided camera.");
-  auto tracks=sfm(cameras,focal,report);int registered=0;for(auto&c:cameras)registered+=c.registered;
+  auto tracks=sfm(cameras,focal,measuredFocal.empty(),object,report);int registered=0;for(auto&c:cameras)registered+=c.registered;
+  Vec3d objectCenter(0,0,0);double objectRadius=0;
+  if(object){Matx33d A=Matx33d::zeros();Vec3d b(0,0,0);for(const auto&c:cameras)if(c.registered){Vec3d d=c.R.t()*Vec3d(0,0,1);auto P=Matx33d::eye()-d*d.t();A+=P;b+=P*center(c);}objectCenter=A.inv(cv::DECOMP_SVD)*b;
+   std::vector<double> radii;for(const auto&c:cameras)if(c.registered){Vec3d q=c.R*objectCenter+c.t;if(q[2]>0)radii.push_back(q[2]*std::max(c.photoRect.width,c.photoRect.height)*.48/focal);}
+   if(radii.size()<4)throw std::runtime_error("Cannot locate centered subject. Keep a stationary object centered while walking around it.");std::sort(radii.begin(),radii.end());objectRadius=radii[radii.size()/2];report(42,"focused object bounds radius "+std::to_string(objectRadius));
+  }
   std::vector<Mat> colors;std::vector<std::vector<float>> depths(cameras.size());
   std::vector<std::vector<int>> neighbors(cameras.size());float f=(float)(focal*dense/side),mid=dense*.5f;
   for(auto&c:cameras){Mat small;cv::resize(c.color,small,{dense,dense},0,0,cv::INTER_AREA);colors.push_back(small);}
   for(int i=0;i<(int)cameras.size();i++)if(cameras[i].registered){
-   auto&ref=cameras[i];std::vector<std::pair<int,int>> scores;
-   for(int j=0;j<(int)cameras.size();j++)if(j!=i&&cameras[j].registered){int common=0;for(auto&tr:tracks)if(tr.good&&tr.observations.count(i)&&tr.observations.count(j))common++;if(common>=15)scores.emplace_back(common,j);}
-   std::sort(scores.rbegin(),scores.rend());if(scores.size()<2)continue;neighbors[i]={scores[0].second,scores[1].second};
+   auto&ref=cameras[i];std::vector<std::pair<double,int>> scores;
+   for(int j=0;j<(int)cameras.size();j++)if(j!=i&&cameras[j].registered){int common=0;std::vector<double> angle;
+    for(auto&tr:tracks)if(tr.good&&tr.observations.count(i)&&tr.observations.count(j)){common++;Vec3d p(tr.point.x,tr.point.y,tr.point.z),a=p-center(ref),b=p-center(cameras[j]);angle.push_back(std::acos(std::clamp(a.dot(b)/(cv::norm(a)*cv::norm(b)),-1.,1.))*180/CV_PI);}
+    if(common<15)continue;std::nth_element(angle.begin(),angle.begin()+angle.size()/2,angle.end());double degrees=angle[angle.size()/2];if(degrees<1||degrees>35)continue;
+    scores.emplace_back(common*std::min(1.,degrees/8)*std::exp(-std::pow((degrees-12)/18,2)),j);
+   }
+   std::sort(scores.rbegin(),scores.rend());if(scores.size()<2)continue;for(size_t n=0;n<std::min<size_t>(3,scores.size());n++)neighbors[i].push_back(scores[n].second);
    std::vector<double> zs;for(auto&tr:tracks)if(tr.good&&tr.observations.count(i)){Vec3d q=ref.R*Vec3d(tr.point.x,tr.point.y,tr.point.z)+ref.t;if(q[2]>0)zs.push_back(q[2]);}if(zs.size()<20)continue;std::sort(zs.begin(),zs.end());
-   DepthJob job{dense,dense,quality?80:48,2,(float)std::max(.001,zs[zs.size()/20]*.75),(float)(zs[zs.size()*19/20]*1.25),f,mid,mid};
+   if(object){Vec3d q=ref.R*objectCenter+ref.t;zs={std::max(.01,q[2]-objectRadius*1.2),q[2]+objectRadius*1.2};}
+   DepthJob job{dense,dense,quality?96:64,(int)neighbors[i].size(),(float)std::max(.001,zs[zs.size()/20]*(object?1.:.75)),(float)(zs[zs.size()*19/20]*(object?1.:1.25)),f,mid,mid};
    auto append=[&](int n){Mat gray,values;cv::cvtColor(colors[n],gray,cv::COLOR_BGR2GRAY);gray.convertTo(values,CV_32F,1/255.);job.pixels.insert(job.pixels.end(),values.ptr<float>(),values.ptr<float>()+values.total());};append(i);
    for(int j:neighbors[i]){append(j);Matx33d R=cameras[j].R*ref.R.t();Vec3d t=cameras[j].t-R*ref.t;std::array<float,16> tf{};for(int y=0;y<3;y++){for(int x=0;x<3;x++)tf[y*4+x]=(float)R(y,x);tf[y*4+3]=(float)t[y];}job.transforms.push_back(tf);}
    report(42+i*40/(int)cameras.size(),"dense depth "+std::to_string(i+1)+"/"+std::to_string(cameras.size())+" "+backend);
    if(gpu)try{depths[i]=gpu->run(job);}catch(const std::exception&e){if(std::string(requested)=="vulkan")throw;report(42+i*40/(int)cameras.size(),std::string("Vulkan failed; CPU fallback: ")+e.what());gpu.reset();backend="cpu (Vulkan fallback)";depths[i]=cpuDepth(job);}else depths[i]=cpuDepth(job);
   }
+  if(object)for(size_t i=0;i<depths.size();i++)if(!depths[i].empty())for(int y=0;y<dense;y++)for(int x=0;x<dense;x++){auto&z=depths[i][y*dense+x];if(z<=0)continue;Vec3d p=cameras[i].R.t()*(Vec3d((x-mid)*z/f,(y-mid)*z/f,z)-cameras[i].t);if(std::abs(p[0]-objectCenter[0])>objectRadius||std::abs(p[1]-objectCenter[1])>objectRadius||std::abs(p[2]-objectCenter[2])>objectRadius)z=0;}
   std::vector<Vertex> vertices;std::vector<uint32_t> indices;
   for(int i=0;i<(int)cameras.size();i++)if(!depths[i].empty()){
    report(83+i*6/(int)cameras.size(),"fusing consistent surfaces");const auto&c=cameras[i];auto&dep=depths[i];std::vector<int> map(dense*dense,-1);
@@ -226,7 +257,7 @@ int yv_reconstruct(const char*input,const char*output,const char*requested,int q
    auto triangle=[&](int a,int b,int cc){int ia=map[a],ib=map[b],ic=map[cc];if(ia<0||ib<0||ic<0)return;float low=std::min({dep[a],dep[b],dep[cc]}),high=std::max({dep[a],dep[b],dep[cc]});if(high-low>low*.04f)return;auto&va=vertices[ia];auto&vb=vertices[ib];auto&vc=vertices[ic];Vec3d normal=Vec3d(vb.x-va.x,vb.y-va.y,vb.z-va.z).cross(Vec3d(vc.x-va.x,vc.y-va.y,vc.z-va.z));double length=cv::norm(normal);if(length<1e-12)return;normal/=length;for(auto idx:{ia,ib,ic}){vertices[idx].nx+=(float)normal[0];vertices[idx].ny+=(float)normal[1];vertices[idx].nz+=(float)normal[2];}indices.insert(indices.end(),{(uint32_t)ia,(uint32_t)ib,(uint32_t)ic});};
    for(int y=3;y<dense-4;y++)for(int x=3;x<dense-4;x++){int a=y*dense+x;triangle(a,a+1,a+dense);triangle(a+1,a+dense+1,a+dense);}
   }
-  report(90,"fusing depth measurements");fuse(cameras,colors,depths,dense,f,quality,vertices,indices,report);
+  report(90,"fusing depth measurements");fuse(object?&objectCenter:nullptr,objectRadius,cameras,colors,depths,dense,f,quality,vertices,indices,report);
   if(indices.size()>3000000)throw std::runtime_error("Surface exceeds mobile mesh budget");for(auto&v:vertices){auto linear=[](float c){return c<=.04045f?c/12.92f:std::pow((c+.055f)/1.055f,2.4f);};v.r=linear(v.r);v.g=linear(v.g);v.b=linear(v.b);float n=std::sqrt(v.nx*v.nx+v.ny*v.ny+v.nz*v.nz);if(n>0){v.nx/=n;v.ny/=n;v.nz/=n;}}
   report(98,"writing GLB mesh");glb(fs::u8path(output),vertices,indices,cameras,depths,focal,dense,quality?4096:2048,backend,registered,report);report(100,"completed");return 0;
  }catch(const std::exception&e){errorText=e.what();return errorText=="CANCELLED"?2:1;}catch(...){errorText="Native reconstruction failed";return 1;}

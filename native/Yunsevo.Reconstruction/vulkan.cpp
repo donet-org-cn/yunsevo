@@ -1,12 +1,14 @@
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include "compute.h"
+#include <opencv2/core.hpp>
 #include "shader.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
 #ifdef _WIN32
+#define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
@@ -112,23 +114,23 @@ std::vector<float> VulkanDepth::run(const DepthJob& job){return impl->run(job);}
 std::vector<float> cpuDepth(const DepthJob& j){
  const int w=j.width,h=j.height;std::vector<float> out(w*h);
  auto sample=[&](int source,float x,float y){if(x<0||y<0||x>=w-1||y>=h-1)return -1.f;int ix=(int)x,iy=(int)y,b=source*w*h+iy*w+ix;float ax=x-ix,ay=y-iy;return (j.pixels[b]*(1-ax)+j.pixels[b+1]*ax)*(1-ay)+(j.pixels[b+w]*(1-ax)+j.pixels[b+w+1]*ax)*ay;};
- for(int y=3;y<h-3;y++)for(int x=3;x<w-3;x++){
-  float best=2,bz=0;
-  for(int plane=0;plane<j.planes;plane++){
-   float alpha=plane/(float)(j.planes-1),z=1/((1-alpha)/j.nearDepth+alpha/j.farDepth),total=0;int valid=0;
-   for(int s=0;s<j.sources;s++){
-    const auto&t=j.transforms[s];float a=0,b=0,aa=0,bb=0,ab=0;bool ok=true;
-    for(int dy=-1;dy<=1;dy++)for(int dx=-1;dx<=1;dx++){
+ cv::parallel_for_(cv::Range(3,h-3),[&](const cv::Range& rows){for(int y=rows.start;y<rows.end;y++)for(int x=3;x<w-3;x++){
+  float a3=0,aa3=0,a5=0,aa5=0;for(int dy=-2;dy<=2;dy++)for(int dx=-2;dx<=2;dx++){float v=j.pixels[(y+dy)*w+x+dx];a5+=v;aa5+=v*v;if(std::abs(dx)<=1&&std::abs(dy)<=1){a3+=v;aa3+=v*v;}}
+  float va3=aa3-a3*a3/9,va5=aa5-a5*a5/25;if(va3<.00015f||va5<.00015f)continue;
+  auto cost=[&](float z,int radius,float a,float va){float first=2,second=2;int valid=0,n=(radius*2+1)*(radius*2+1);
+   for(int s=0;s<j.sources;s++){const auto&t=j.transforms[s];float b=0,bb=0,ab=0;bool ok=true;
+    for(int dy=-radius;dy<=radius;dy++)for(int dx=-radius;dx<=radius;dx++){
      float px=(x+dx-j.cx)*z/j.focal,py=(y+dy-j.cy)*z/j.focal;
      float qx=t[0]*px+t[1]*py+t[2]*z+t[3],qy=t[4]*px+t[5]*py+t[6]*z+t[7],qz=t[8]*px+t[9]*py+t[10]*z+t[11];
-     float u=qz>0?sample(s+1,j.focal*qx/qz+j.cx,j.focal*qy/qz+j.cy):-1,v=j.pixels[(y+dy)*w+x+dx];if(u<0)ok=false;
-     a+=v;b+=u;aa+=v*v;bb+=u*u;ab+=u*v;
+     float u=qz>0?sample(s+1,j.focal*qx/qz+j.cx,j.focal*qy/qz+j.cy):-1,v=j.pixels[(y+dy)*w+x+dx];if(u<0)ok=false;b+=u;bb+=u*u;ab+=u*v;
     }
-    float va=aa-a*a/9,vb=bb-b*b/9;if(ok&&va>.00015f&&vb>.00015f){total+=1-std::clamp((ab-a*b/9)/std::sqrt(va*vb),-1.f,1.f);valid++;}
-   }
-   if(valid==j.sources&&total/valid<best){best=total/valid;bz=z;}
-  }
-  if(best<.22f)out[y*w+x]=bz;
- }
- return out;
+    float vb=bb-b*b/n;if(ok&&va>.00015f&&vb>.00015f){float c=1-std::clamp((ab-a*b/n)/std::sqrt(va*vb),-1.f,1.f);if(c<first){second=first;first=c;}else second=std::min(second,c);valid++;}
+   }return valid>=2?(first+second)*.5f:2.f;
+  };
+  float nearInv=1/j.nearDepth,stepInv=(1/j.farDepth-nearInv)/(j.planes-1),best=2,bp=0;
+  for(int plane=0;plane<j.planes;plane++){float c=cost(1/(nearInv+plane*stepInv),1,a3,va3);if(c<best){best=c;bp=(float)plane;}}
+  if(best>.4f)continue;float refined=2,result=0;
+  for(int k=-4;k<=4;k++){float plane=std::clamp(bp+k*.2f,0.f,(float)(j.planes-1)),z=1/(nearInv+plane*stepInv),c=cost(z,2,a5,va5);if(c<refined){refined=c;result=z;}}
+  if(refined<.25f)out[y*w+x]=result;
+ }});return out;
 }

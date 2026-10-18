@@ -24,6 +24,9 @@ internal static class ScanVideo
         retriever.SetDataSource(source);
         if (!long.TryParse(retriever.ExtractMetadata(MetadataKey.Duration), out var duration) || duration < 3000 || duration > 180_000)
             throw new IOException("请选择 3 秒至 3 分钟的连续环绕视频，避免快切、变焦和不同物体混在一起。");
+        ScanVideoCalibration? calibration = null;
+        if (File.Exists(source + ".calibration.json")) try { calibration = System.Text.Json.JsonSerializer.Deserialize(File.ReadAllText(source + ".calibration.json"), ScanJson.Default.ScanVideoCalibration); } catch (System.Text.Json.JsonException) { }
+        var objectScan = ScanStore.Get(id).Subject == "object";
         var count = Math.Min(240, Math.Max(12, (int)(duration / 350)));
         var buckets = Math.Min(Math.Min(room, 48), Math.Max(6, count / 3));
         var best = new Candidate?[buckets];
@@ -33,7 +36,7 @@ internal static class ScanVideo
             var time = (long)((i + .5) * duration * 1000 / count); // Android frame timestamps are microseconds.
             using var bitmap = retriever.GetScaledFrameAtTime(time, Option.Closest, 256, 256);
             if (bitmap == null) continue;
-            var candidate = Measure(bitmap, time);
+            var candidate = Measure(bitmap, time, objectScan);
             if (candidate == null) continue;
             var bucket = Math.Min(buckets - 1, i * buckets / count);
             if (best[bucket] == null || candidate.Sharpness > best[bucket]!.Sharpness) best[bucket] = candidate;
@@ -59,6 +62,7 @@ internal static class ScanVideo
                 using (var exif = new ExifInterface(path))
                 {
                     exif.SetAttribute("Orientation", "1");
+                    if (calibration is { Focal35mm: >= 5 and <= 500 }) exif.SetAttribute("FocalLengthIn35mmFilm", Math.Round(calibration.Focal35mm).ToString(CultureInfo.InvariantCulture));
                     exif.SetAttribute("ImageDescription", "Video keyframe; source=" + Path.GetFileName(source) + "; timestampUs=" + candidate.Time.ToString(CultureInfo.InvariantCulture));
                     exif.SaveAttributes();
                 }
@@ -70,21 +74,24 @@ internal static class ScanVideo
         }
         finally { Directory.Delete(staging, true); }
     }
-    private static Candidate? Measure(Bitmap bitmap, long time)
+    private static Candidate? Measure(Bitmap bitmap, long time, bool objectScan)
     {
-        using var thumb = Bitmap.CreateScaledBitmap(bitmap, 96, 72, true)!;
-        var pixels = new int[96 * 72]; thumb.GetPixels(pixels, 0, 96, 0, 0, 96, 72);
-        var luma = new double[pixels.Length]; double sum = 0;
-        for (var i = 0; i < pixels.Length; i++)
-        { var c = pixels[i]; var v = .299 * ((c >> 16) & 255) + .587 * ((c >> 8) & 255) + .114 * (c & 255); luma[i] = v; sum += v; }
-        var mean = sum / luma.Length; var contrast = Math.Sqrt(luma.Sum(x => (x - mean) * (x - mean)) / luma.Length);
-        double lap = 0, lap2 = 0; var n = 0;
-        for (var y = 1; y < 71; y++) for (var x = 1; x < 95; x++)
+        const int width = 144; var height = Math.Clamp((int)Math.Round(width * bitmap.Height / (double)bitmap.Width), 72, 256);
+        using var thumb = Bitmap.CreateScaledBitmap(bitmap, width, height, true)!;
+        var pixels = new int[width * height]; thumb.GetPixels(pixels, 0, width, 0, 0, width, height);
+        var luma = new double[pixels.Length];
+        for (var i = 0; i < pixels.Length; i++) { var c = pixels[i]; luma[i] = .299 * ((c >> 16) & 255) + .587 * ((c >> 8) & 255) + .114 * (c & 255); }
+        var x0 = objectScan ? width / 5 : 1; var x1 = objectScan ? width * 4 / 5 : width - 1;
+        var y0 = objectScan ? height / 8 : 1; var y1 = objectScan ? height * 7 / 8 : height - 1;
+        double sum = 0, sum2 = 0, lap = 0, lap2 = 0; var n = 0;
+        for (var y = y0; y < y1; y++) for (var x = x0; x < x1; x++)
         {
-            var i = y * 96 + x; var v = 4 * luma[i] - luma[i - 1] - luma[i + 1] - luma[i - 96] - luma[i + 96]; lap += v; lap2 += v * v; n++;
+            var i = y * width + x; var value = luma[i]; sum += value; sum2 += value * value;
+            var edge = 4 * value - luma[i - 1] - luma[i + 1] - luma[i - width] - luma[i + width]; lap += edge; lap2 += edge * edge; n++;
         }
+        var mean = sum / n; var contrast = Math.Sqrt(Math.Max(0, sum2 / n - mean * mean));
         var sharpness = lap2 / n - Math.Pow(lap / n, 2);
-        if (mean is < 6 or > 250 || contrast < 10 || sharpness < 18) return null;
+        if (mean is < 6 or > 250 || contrast < 10 || sharpness < (objectScan ? 35 : 18)) return null;
         for (var i = 0; i < luma.Length; i++) luma[i] -= mean;
         return new(time, sharpness, luma);
     }

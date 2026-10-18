@@ -107,6 +107,15 @@ public sealed partial class CameraActivity
             File.Move(partial, movieOutput, true);
             if (scanVideo)
             {
+                if (previewFocal > 0 && sensorDiagonal > 0)
+                {
+                    var aspect = cameraWidth / (double)cameraHeight; var crop = Crop();
+                    var readWidth = Math.Min(crop.Width(), crop.Height() * aspect); var readHeight = Math.Min(crop.Height(), crop.Width() / aspect);
+                    var effectiveSensor = sensorDiagonal * Math.Sqrt(readWidth * readWidth + readHeight * readHeight) / Math.Sqrt((double)activeArray.Width() * activeArray.Width() + (double)activeArray.Height() * activeArray.Height());
+                    var calibration = new ScanVideoCalibration(previewFocal * 43.2666153 / effectiveSensor);
+                    try { File.WriteAllText(movieOutput + ".calibration.json", System.Text.Json.JsonSerializer.Serialize(calibration, ScanJson.Default.ScanVideoCalibration)); }
+                    catch (IOException) { } // Preserve a valid video even if optional calibration cannot be saved.
+                }
                 SetResult(global::Android.App.Result.Ok, new global::Android.Content.Intent().PutExtra("scanVideo", Path.GetFileName(movieOutput)));
                 Finish(); return;
             }

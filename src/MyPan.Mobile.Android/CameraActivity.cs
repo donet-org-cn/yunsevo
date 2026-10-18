@@ -170,12 +170,18 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
         device.CreateCaptureSession(new List<Surface> { surface!, reader!.Surface! }, new SessionCallback(this, generation), handler);
 #pragma warning restore CS0618, CA1422
     }
+    private float previewFocal;
+    private sealed class PreviewCalibration(CameraActivity owner) : CameraCaptureSession.CaptureCallback
+    {
+        public override void OnCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result)
+        { if (result.Get(CaptureResult.LensFocalLength) is Java.Lang.Float focal) owner.previewFocal = focal.FloatValue(); }
+    }
     private void UpdatePreview()
     {
         handler?.Post(() =>
         {
             if (preview == null || session == null) return;
-            try { ApplyControls(preview); session.SetRepeatingRequest(preview.Build(), null, handler); }
+            try { ApplyControls(preview); session.SetRepeatingRequest(preview.Build(), scanVideo ? new PreviewCalibration(this) : null, handler); }
             catch (Exception ex) { RunOnUiThread(() => message.Text = ex.Message); }
         });
     }

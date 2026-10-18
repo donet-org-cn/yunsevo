@@ -6,7 +6,7 @@ static int progress(void*,int n,const char* text){ std::printf("%d\t%s\n",n,text
 static int run(int argc,char**argv){
  if(argc==2&&std::strcmp(argv[1],"--capabilities")==0){std::puts(yv_capabilities());return 0;}
  if(argc<4){std::fputs("Usage: yunsevo-reconstruct INPUT_DIRECTORY OUTPUT.glb auto|cpu|vulkan [quality:0|1]\n",stderr);return 2;}
- int rc=yv_reconstruct(argv[1],argv[2],argv[3],argc>4?std::atoi(argv[4]):0,progress,nullptr);
+ int rc=yv_reconstruct_v2(argv[1],argv[2],argv[3],argc>4?std::atoi(argv[4]):0,argc>5?argv[5]:"object",progress,nullptr);
  if(rc)std::fprintf(stderr,"%s\n",yv_last_error());return rc;
 }
 
