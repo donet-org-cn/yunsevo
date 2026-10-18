@@ -33,6 +33,19 @@ public sealed partial class CloudStore
         }
         Text(metadata.Project, 160); Text(metadata.Place, 200); Text(metadata.Note, 500, true);
         Text(metadata.Watermark, 1500, true); Text(metadata.Location, 240); Text(metadata.DeviceName, 128);
+        if (metadata.Environment is { } environment)
+        {
+            Text(environment.Address, 240); Text(environment.AddressSource, 80); Text(environment.AddressAttribution, 160);
+            Text(environment.AddressError, 160); Text(environment.WeatherError, 160);
+            if (environment.Weather is { } weather)
+            {
+                Text(weather.Description, 80); Text(weather.Source, 80); Text(weather.SourceUrl, 200); Text(weather.Attribution, 160);
+                if (!double.IsFinite(weather.TemperatureC) || weather.TemperatureC is < -100 or > 80 ||
+                    weather.Humidity is { } humidity && (!double.IsFinite(humidity) || humidity is < 0 or > 100) ||
+                    weather.WindSpeed is { } wind && (!double.IsFinite(wind) || wind is < 0 or > 150))
+                    throw new StoreException(400, "天气数值无效。");
+            }
+        }
         if (metadata.CapturedUtc is { } captured && (captured.Year < 1900 || captured > DateTimeOffset.UtcNow.AddDays(1)))
             throw new StoreException(400, "设备上报的拍摄时间无效。");
         if (metadata.Latitude.HasValue != metadata.Longitude.HasValue ||
@@ -64,6 +77,6 @@ public sealed partial class CloudStore
         return new(metadata?.Kind ?? "file", identity, DateTimeOffset.UtcNow,
             metadata?.Kind == "camera" ? identity : null, metadata?.CapturedUtc,
             metadata?.ProjectFolderId, project, Clean(metadata?.Place), Clean(metadata?.Note), metadata?.Watermark,
-            metadata?.Latitude, metadata?.Longitude, Clean(metadata?.Location), Clean(metadata?.DeviceName), metadata?.CaptureId, sha256);
+            metadata?.Latitude, metadata?.Longitude, Clean(metadata?.Location), Clean(metadata?.DeviceName), metadata?.CaptureId, sha256, metadata?.Environment);
     }
 }

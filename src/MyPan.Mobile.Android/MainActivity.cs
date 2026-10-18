@@ -13,11 +13,13 @@ namespace MyPan.Mobile.Android;
 [Activity(Label = "沄序", MainLauncher = true, Exported = true, LaunchMode = LaunchMode.SingleTop,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize)]
 [IntentFilter([Intent.ActionSend, Intent.ActionSendMultiple], Categories = [Intent.CategoryDefault], DataMimeType = "*/*")]
-public sealed class MainActivity : Activity
+public sealed partial class MainActivity : Activity
 {
     private readonly CancellationTokenSource stop = new();
     private LinearLayout root = null!, content = null!;
     private TextView status = null!;
+    private FrameLayout workspaceBody = null!;
+    private ScrollView workspaceScroll = null!;
     private string tab = "files", folder = "", query = "";
     private int page = 1;
     private bool busy, loggedInView;
@@ -28,12 +30,18 @@ public sealed class MainActivity : Activity
     {
         base.OnCreate(state);
         AppServices.Changed += OnServicesChanged;
-        if (Client.Account == null) ShowLogin(); else { ShowWorkspace(); _ = Run(RenderFiles); AppServices.Kick(); }
+        if (Client.Account == null) ShowLogin();
+        else { if (Intent?.GetStringExtra("tab") == "backup") tab = "backup"; ShowWorkspace(); _ = Run(tab == "backup" ? RenderCloudAlbum : RenderFiles); AppServices.Kick(); }
         if (state == null) Receive(Intent);
     }
-    protected override void OnNewIntent(Intent? intent) { base.OnNewIntent(intent); Intent = intent; Receive(intent); }
+    protected override void OnNewIntent(Intent? intent) { base.OnNewIntent(intent); Intent = intent; if (!NavigateIntent(intent)) Receive(intent); }
+    private bool NavigateIntent(Intent? intent)
+    {
+        if (intent?.GetStringExtra("tab") != "backup" || Client.Account == null) return false;
+        tab = "backup"; ShowWorkspace(); _ = Run(RenderCloudAlbum); return true;
+    }
     protected override void OnResume() { base.OnResume(); if (loggedInView) AppServices.Kick(); }
-    protected override void OnDestroy() { AppServices.Changed -= OnServicesChanged; stop.Cancel(); base.OnDestroy(); }
+    protected override void OnDestroy() { AppServices.Changed -= OnServicesChanged; stop.Cancel(); ClearAlbumImages(); base.OnDestroy(); }
     private async Task Run(Func<Task> operation)
     {
         if (busy) return;
@@ -46,6 +54,7 @@ public sealed class MainActivity : Activity
     }
     private void ShowLogin(string? error = null)
     {
+        ClearAlbumImages();
         loggedInView = false;
         var body = Ui.Column(this, 28); body.SetBackgroundColor(Ui.Background);
         body.AddView(Ui.Text(this, "沄序", 34, true));
@@ -79,17 +88,18 @@ public sealed class MainActivity : Activity
         root = new(this) { Orientation = Orientation.Vertical }; root.SetFitsSystemWindows(true); root.SetBackgroundColor(Ui.Background);
         var header = Ui.Column(this, 16);
         header.AddView(Ui.Text(this, "沄序 · " + Client.Account!.Login.User.DisplayName, 21, true));
-        status = Ui.Text(this, AppServices.Status, 12); status.SetTextColor(Ui.Muted); header.AddView(status); root.AddView(header);
+        status = Ui.Text(this, AppServices.Status + " · " + AppServices.NetworkLabel, 12); status.SetTextColor(Ui.Muted); header.AddView(status); root.AddView(header);
         content = Ui.Column(this, 16);
-        var scroll = new ScrollView(this) { FillViewport = true }; scroll.AddView(content);
-        root.AddView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        workspaceScroll = new ScrollView(this) { FillViewport = true }; workspaceScroll.AddView(content);
+        workspaceBody = new FrameLayout(this); workspaceBody.AddView(workspaceScroll);
+        root.AddView(workspaceBody, new LinearLayout.LayoutParams(-1, 0, 1));
         var navigation = new LinearLayout(this) { Orientation = Orientation.Horizontal }; navigation.SetBackgroundColor(global::Android.Graphics.Color.White);
         foreach (var (key, title) in new[] { ("files", "文件"), ("camera", "工程拍照"), ("backup", "相册"), ("transfers", "传输"), ("me", "我的") })
         {
             var button = new Button(this) { Text = title, TextSize = 12 }; button.SetAllCaps(false);
             button.SetTextColor(key == tab ? Ui.Teal : Ui.Muted); button.SetBackgroundColor(global::Android.Graphics.Color.Transparent);
             button.LayoutParameters = new LinearLayout.LayoutParams(0, Ui.Dp(this, 58), 1);
-            button.Click += (_, _) => { tab = key; ShowWorkspace(); _ = Run(RenderTab); };
+            button.Click += (_, _) => { if (key != "backup") ClearAlbumImages(); tab = key; ShowWorkspace(); _ = Run(RenderTab); };
             navigation.AddView(button);
         }
         root.AddView(navigation); SetContentView(root);
@@ -97,7 +107,7 @@ public sealed class MainActivity : Activity
     private Task RenderTab()
     {
         content.RemoveAllViews();
-        return tab switch { "files" => RenderFiles(), "camera" => RenderCamera(), "backup" => RenderBackup(), "transfers" => RenderTransfers(), _ => RenderMe() };
+        return tab switch { "files" => RenderFiles(), "camera" => RenderCamera(), "backup" => RenderCloudAlbum(), "transfers" => RenderTransfers(), _ => RenderMe() };
     }
     private void OnServicesChanged()
     {
@@ -106,7 +116,7 @@ public sealed class MainActivity : Activity
         RunOnUiThread(() =>
         {
             if (!loggedInView || IsFinishing) return;
-            status.Text = AppServices.Status;
+            status.Text = AppServices.Status + " · " + AppServices.NetworkLabel;
             if (tab == "transfers" && !busy) _ = RenderTransfers();
         });
     }
@@ -182,7 +192,16 @@ public sealed class MainActivity : Activity
         var place = Ui.Input(this, "施工部位（可选）", Client.Options.Place); content.AddView(place);
         var note = Ui.Input(this, "水印备注（可选）", Client.Options.Note); content.AddView(note);
         Toggle("在水印中添加定位", Client.Options.IncludeLocation, value => SaveOptions(Client.Options with { IncludeLocation = value }));
-        Toggle("同时保存到系统相册", Client.Options.SaveCameraToGallery, value => SaveOptions(Client.Options with { SaveCameraToGallery = value }));
+        Toggle("显示详细地址", Client.Options.IncludeAddress, value => SaveOptions(Client.Options with { IncludeAddress = value }));
+        Toggle("显示天气", Client.Options.IncludeWeather, value => SaveOptions(Client.Options with { IncludeWeather = value }));
+        content.AddView(Ui.Text(this, "地址、天气按需通过服务器查询，会向所配置的服务商发送定位坐标。无定位或断网时明确显示不可用；天气包含来源与数据时间。", 12));
+        content.AddView(Ui.Text(this, "拍摄保存方式", 14, true));
+        var saveMode = new Spinner(this);
+        saveMode.Adapter = new ArrayAdapter<string>(this, global::Android.Resource.Layout.SimpleSpinnerDropDownItem, new[] { "云端 + 本机相册", "仅云端（上传成功后清理临时文件）" });
+        saveMode.SetSelection(Client.Options.SaveCameraToGallery ? 0 : 1);
+        saveMode.ItemSelected += (_, args) => SaveOptions(Client.Options with { SaveCameraToGallery = args.Position == 0 }); content.AddView(saveMode);
+        Toggle("录像录制声音", Client.Options.RecordAudio, value => SaveOptions(Client.Options with { RecordAudio = value }));
+        content.AddView(Ui.Button(this, "水印样式与颜色", () => WatermarkPainter.Settings(this, Client.Options, SaveOptions), false));
         content.AddView(Ui.Button(this, "开始拍照", () => _ = Run(async () =>
         {
             if (Client.Options.Project == null) { Ui.Alert(this, "先选择工程", "请先选择或创建工程目录。"); return; }
@@ -190,7 +209,7 @@ public sealed class MainActivity : Activity
             if (CheckSelfPermission(Manifest.Permission.Camera) != Permission.Granted)
                 await Permissions([Manifest.Permission.Camera]);
             if (CheckSelfPermission(Manifest.Permission.Camera) != Permission.Granted) return;
-            if (Client.Options.IncludeLocation && CheckSelfPermission(Manifest.Permission.AccessCoarseLocation) != Permission.Granted)
+            if ((Client.Options.IncludeLocation || Client.Options.IncludeAddress || Client.Options.IncludeWeather) && CheckSelfPermission(Manifest.Permission.AccessCoarseLocation) != Permission.Granted)
                 await Permissions([Manifest.Permission.AccessFineLocation, Manifest.Permission.AccessCoarseLocation]);
             if (Client.Options.SaveCameraToGallery && !OperatingSystem.IsAndroidVersionAtLeast(29) && CheckSelfPermission(Manifest.Permission.WriteExternalStorage) != Permission.Granted)
                 await Permissions([Manifest.Permission.WriteExternalStorage]);
@@ -200,7 +219,8 @@ public sealed class MainActivity : Activity
     }
     private Task RenderBackup()
     {
-        content.RemoveAllViews(); content.AddView(Ui.Text(this, "相册自动备份", 25, true));
+        workspaceBody.RemoveAllViews(); workspaceBody.AddView(workspaceScroll);
+        ClearAlbumImages(); content.RemoveAllViews(); content.AddView(Ui.Button(this, "返回云端相册", () => _ = Run(RenderCloudAlbum), false)); content.AddView(Ui.Text(this, "相册自动备份", 25, true));
         content.AddView(Ui.Text(this, "原图与视频保存在你选择的云端目录。清理手机相册后，已备份的云端文件仍保留。", 14));
         content.AddView(Ui.Text(this, "备份目录：" + (Client.Options.BackupFolder == null ? "尚未设置" : Ui.PathLabel(Client.Options.BackupFolder.Path)), 15));
         content.AddView(Ui.Button(this, "选择备份目录", () => _ = Run(async () =>

@@ -14,7 +14,9 @@ public sealed record FolderSelection(Guid Id, string Path, string Category = "as
 public sealed record MobileOptions(FolderSelection? BackupFolder = null, FolderSelection? Project = null,
     bool AutoBackup = false, bool WifiOnly = true, bool IncludeVideos = true, bool ChargingOnly = false,
     bool IncludeLocation = false, bool SaveCameraToGallery = true, string Place = "", string Note = "",
-    bool PauseUploads = false);
+    bool PauseUploads = false, string WatermarkStyle = "工程卡片", bool WatermarkBackground = true,
+    string WatermarkTextColor = "#FFFFFF", float WatermarkTextScale = 1, bool RecordAudio = true,
+    bool IncludeAddress = true, bool IncludeWeather = false);
 public sealed record MobileJob(Guid Id, string Account, string LocalFile, string Name, long Length, string Sha256,
     FolderSelection Folder, string Subdirectory, MobileUploadMetadata Metadata, DateTimeOffset CreatedUtc,
     string State = "pending", int Attempts = 0, DateTimeOffset? RetryUtc = null, string? Error = null,
@@ -29,7 +31,7 @@ public interface IAlbumSource
     Task<Stream> Open(AlbumAsset asset, CancellationToken ct);
 }
 public sealed record TransferProgress(Guid JobId, long Bytes, long Total);
-public sealed record CameraDraft(Guid Id, string Account, string Name, FolderSelection Folder, MobileUploadMetadata Metadata, Guid Producer, bool Ready = false);
+public sealed record CameraDraft(Guid Id, string Account, string Name, FolderSelection Folder, MobileUploadMetadata Metadata, Guid Producer, bool Ready = false, string Extension = ".jpg");
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = false)]
 [JsonSerializable(typeof(MobileAccount))]

@@ -274,6 +274,12 @@ try {
     await reloadView('window.MyPan.state.view==="settings-dialog"','restore settings page');
     assert(await cdp.evaluate('!document.getElementById("settings-dialog").hidden && document.getElementById("nav-settings").classList.contains("selected")'), 'Refreshing settings remains in settings with its configuration loaded');
     assert(await cdp.evaluate('!!document.getElementById("setting-webdav") && !!document.getElementById("setting-smb") && !!document.getElementById("setting-ftp")'), 'Server settings exposes separate protocol switches'); await screenshot('server-settings');
+    await input('environment-key', 'abcdef0123456789abcdef0123456789');
+    await cdp.evaluate('document.getElementById("environment-address").value="amap";document.getElementById("environment-weather").value="amap"');
+    await submit('environment-form'); await waitDom('document.getElementById("environment-key-status").textContent.includes("已配置")', 'save encrypted environment key');
+    assert(await cdp.evaluate('document.getElementById("environment-key").value===""'), 'Saving provider settings clears the secret input and shows only configured status');
+    await reloadView('window.MyPan.state.view==="settings-dialog"','reload environment settings');
+    assert(await cdp.evaluate('document.getElementById("environment-address").value==="amap" && document.getElementById("environment-weather").value==="amap" && document.getElementById("environment-key").value===""'), 'Address and weather settings survive refresh without returning the provider key');
     await click('download-backup');
     await until(async()=>{const names=await readdir(path.join(root,'downloads'));return names.some(x=>/^yunsevo-backup.*\.zip$/.test(x));},'one-click migration ZIP download');
     assert(true,'Administrator downloads a migration archive through the settings page without a token in the URL');

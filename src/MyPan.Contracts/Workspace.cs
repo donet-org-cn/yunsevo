@@ -14,7 +14,8 @@ public sealed record DeletionInfo(DateTimeOffset Time, Guid UserId, string Usern
 public sealed record BrowserEntry(CloudEntry Entry, DeletionInfo? Deleted);
 public sealed record EntryLookup(CloudEntry? Entry);
 public sealed record PagedResult<T>(List<T> Items, int Total, int Page, int PageSize,
-    long Revision = 0, int FolderAccess = 0, long TotalFiles = 0, long TotalBytes = 0);
+    long Revision = 0, int FolderAccess = 0, long TotalFiles = 0, long TotalBytes = 0, string? NextCursor = null);
+public sealed record MediaNeighbors(CloudEntry? Previous, CloudEntry Current, CloudEntry? Next);
 public sealed record ResetPassword(string? Password = null);
 public sealed record PasswordResult(string Username, string Password);
 public sealed record ChangePassword(string CurrentPassword, string NewPassword);

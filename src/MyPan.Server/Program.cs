@@ -27,6 +27,7 @@ var maxUpload = builder.Configuration.GetValue<long?>("MyPan:MaxUploadBytes") ??
 ServerInstallation.ConfigureListener(builder);
 var dataPath = ServerInstallation.DataPath(builder.Configuration);
 var store = new CloudStore(dataPath, apiKey);
+using var captureEnvironment = new CaptureEnvironmentService(store, dataPath);
 var uploads = new UploadSessions(store, dataPath, maxUpload, builder.Configuration.GetValue<long?>("MyPan:MaxPendingUploadBytes") ?? 40L * 1024 * 1024 * 1024);
 var audit = new AuditLog(Path.Combine(dataPath, "audit"));
 await using var protocols = new ProtocolManager(store, audit, dataPath, maxUpload, builder.Configuration["MyPan:SmbGatewayPath"]);
@@ -132,14 +133,25 @@ app.MapGet("/api/admin/users/page", (string? query, int? page, int? pageSize, Ht
 app.MapGet("/api/admin/groups/page", (string? query, int? page, int? pageSize, HttpContext context) => PageWindow.Create(store.Groups(Actor(context)).Where(x => string.IsNullOrEmpty(query) || x.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase), page ?? 1, pageSize ?? 20));
 app.MapGet("/api/browser/entries", (string? folder, string? query, bool? trash, string? sort, bool? descending, int? page, int? pageSize, HttpContext context) => store.Browse(Actor(context), folder, query, trash ?? false, sort, descending ?? false, page ?? 1, pageSize ?? 20));
 app.MapGet("/api/browser/entry", (string path, HttpContext context) => store.Lookup(Actor(context), path));
+app.MapGet("/api/browser/media", (string? folder, int? page, int? pageSize, string? after, HttpContext context) => store.MediaAlbum(Actor(context), folder, page ?? 1, pageSize ?? 24, after));
+app.MapGet("/api/browser/media/{id:guid}/neighbors", (Guid id, string? folder, HttpContext context) => store.MediaNeighbors(Actor(context), id, folder));
+app.MapGet("/api/media/{id:guid}/thumbnail", async (Guid id, string? version, HttpContext context, CancellationToken ct) =>
+{
+    var thumbnail = await store.Thumbnail(Actor(context), id, version, ct);
+    return Results.File(thumbnail, "image/jpeg", lastModified: File.GetLastWriteTimeUtc(thumbnail));
+});
 app.MapGet("/api/browser/folders", (string? query, int? page, int? pageSize, HttpContext context) => PageWindow.Create(store.SyncFolders(Actor(context)).Where(x => string.IsNullOrEmpty(query) || x.Path.Contains(query, StringComparison.OrdinalIgnoreCase)), page ?? 1, pageSize ?? 20));
 app.MapGet("/api/browser/versions/{id:guid}", (Guid id, int? page, int? pageSize, HttpContext context) => PageWindow.Create(store.Versions(Actor(context), id), page ?? 1, pageSize ?? 20));
 app.MapGet("/api/admin/audit/page", (string? action, string? user, string? kind, int? page, int? pageSize, HttpContext context) => { store.RequireAdmin(Actor(context)); return audit.Page(action, user, kind, page ?? 1, pageSize ?? 20); });
 app.MapGet("/api/admin/audit", (string? action, string? user, string? kind, HttpContext context) => { store.RequireAdmin(Actor(context)); return audit.Read(action, user, kind); });
 app.MapGet("/api/admin/settings", (HttpContext context) => { store.RequireAdmin(Actor(context)); return protocols.Status; });
+app.MapGet("/api/admin/environment-settings", (HttpContext context) => captureEnvironment.Settings(Actor(context)));
+app.MapPut("/api/admin/environment-settings", (EnvironmentSettings request, HttpContext context) => captureEnvironment.Save(Actor(context), request));
+app.MapPost("/api/mobile/environment", (EnvironmentQuery request, HttpContext context, CancellationToken ct) => captureEnvironment.Resolve(Actor(context), request, ct));
 app.MapGet("/api/admin/backup", async (HttpContext context, CancellationToken ct) =>
 {
     var files = await protocols.CaptureBackupFiles(Actor(context), ct);
+    foreach (var file in captureEnvironment.BackupFiles(Actor(context))) files.Add(file.Key, file.Value);
     var backup = await store.CreateBackup(Actor(context), apiKey, files, audit, ct);
     return Results.File(backup, "application/zip", "yunsevo-backup-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".zip");
 });

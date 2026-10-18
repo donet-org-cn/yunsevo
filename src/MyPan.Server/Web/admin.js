@@ -41,12 +41,26 @@
   $('account-security').addEventListener('click',()=>{$('password-form').reset();error('password-error','');$('password-dialog').showModal();});
   $('password-form').addEventListener('submit',async event=>{event.preventDefault();const submit=event.submitter??event.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;try{if($('password-new').value!==$('password-confirm').value)throw new Error('两次新密码不一致。');await json('/api/auth/password','POST',{currentPassword:$('password-current').value,newPassword:$('password-new').value});$('password-form').reset();$('password-dialog').close();disconnect('密码已修改，请重新登录。');}catch(e){error('password-error',e.message);}finally{submit.disabled=false;}});
   async function loadSettings() {
+    const environment = await json('/api/admin/environment-settings', 'GET');
+    $('environment-enabled').checked = environment.enabled;
+    for(const [id,key] of [['address','addressProvider'],['weather','weatherProvider'],['photon','photonServer'],['contact','contact'],['cache','cacheMinutes']]) $('environment-'+id).value = environment[key];
+    $('environment-key').value = ''; $('environment-clear-key').checked = false;
+    $('environment-key-status').textContent = environment.hasAmapKey ? '已配置 · Key 不回传到浏览器' : '尚未配置';
     const result = await json('/api/admin/settings', 'GET'), config = result.settings;
     for (const [id, key] of [['setting-webdav','webDav'],['setting-ftp','ftp'],['setting-smb','smb']]) $(id).checked = config[key];
     $('setting-address').value = config.listenAddress; $('setting-ftp-port').value = config.ftpPort; $('setting-smb-port').value = config.smbPort;
     $('protocol-status').textContent = 'WebDAV：' + (config.webDav ? '已启用' : '关闭') + ' · FTP：' + (result.ftpRunning ? '运行中' : '关闭') + ' · SMB：' + (result.smbRunning ? '运行中' : '关闭') + (result.error ? ' · ' + result.error : '');
   }
   $('nav-settings').addEventListener('click', async () => { try { await loadSettings(); error('settings-error',''); showPage('settings-dialog'); } catch(e) { notify(e.message); } });
+  $('environment-form').addEventListener('submit', async event => {
+    event.preventDefault(); const submit=event.submitter ?? event.currentTarget.querySelector('button[type="submit"]'); submit.disabled=true; error('environment-error','');
+    try {
+      await json('/api/admin/environment-settings','PUT',{enabled:$('environment-enabled').checked,addressProvider:$('environment-address').value,weatherProvider:$('environment-weather').value,
+        photonServer:$('environment-photon').value.trim(),contact:$('environment-contact').value.trim(),cacheMinutes:Number($('environment-cache').value),
+        amapKey:$('environment-key').value.trim()||null,clearAmapKey:$('environment-clear-key').checked});
+      await loadSettings(); notify('地址与天气配置已保存');
+    }catch(e){error('environment-error',e.message);}finally{submit.disabled=false;}
+  });
   $('settings-form').addEventListener('submit', async event => { event.preventDefault(); const submit = event.submitter ?? event.currentTarget.querySelector('button[type="submit"]'); submit.disabled = true; error('settings-error',''); try { await json('/api/admin/settings', 'PUT', { webDav: $('setting-webdav').checked, ftp: $('setting-ftp').checked, smb: $('setting-smb').checked, listenAddress: $('setting-address').value.trim(), ftpPort: Number($('setting-ftp-port').value), smbPort: Number($('setting-smb-port').value) }); await loadSettings(); notify('协议配置已保存并生效'); } catch(e) { error('settings-error',e.message); } finally { submit.disabled = false; } });
   async function loadAudit() {
     const result=await json('/api/admin/audit/page?'+new URLSearchParams({user:$('audit-user').value.trim(),kind:$('audit-kind').value,page:pages.audit.page,pageSize:pages.audit.size}),'GET'), selected=result.items; pages.audit.page=result.page;
@@ -175,6 +189,7 @@
       origin.place ? '部位：' + origin.place : '',
       origin.note ? '备注：' + origin.note : '',
       origin.location ? '位置：' + origin.location : '',
+      origin.environment?.weather ? '天气：' + origin.environment.weather.description + ' ' + origin.environment.weather.temperatureC + '°C · ' + origin.environment.weather.source + (origin.environment.weather.forecast ? '（预报）' : '') + ' · ' + new Date(origin.environment.weather.dataUtc).toLocaleString('zh-CN') : '',
       '上传人：' + origin.uploadedBy.displayName + '（' + origin.uploadedBy.username + '）',
       '上传时间：' + new Date(origin.uploadedUtc).toLocaleString('zh-CN'),
       origin.deviceName ? '设备：' + origin.deviceName : ''

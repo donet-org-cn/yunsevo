@@ -6,8 +6,17 @@
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../MyPan.Contracts/MyPan.Contracts.csproj" /></ItemGroup>
   <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
+    <None Include="../../THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Notices/**/*" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <EmbeddedResource Include="Web/index.html;Web/app.css;Web/app.js;Web/admin.js;Web/setup.html;Web/setup.js" />
     <None Include="../../scripts/restore-backup.ps1" Link="restore-backup.ps1" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../docs/backup-and-migration.md" Link="MIGRATION.md" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="ExcludeSkiaNativeSymbols" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup><ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'libSkiaSharp.pdb'" /></ItemGroup>
+  </Target>
 </Project>

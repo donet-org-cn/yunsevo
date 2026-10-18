@@ -27,6 +27,7 @@ public sealed class MobileClient : IDisposable
     private static string Scope(MobileAccount account) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
         new Uri(account.Server).AbsoluteUri.TrimEnd('/') + "\n" + account.Login.User.Id.ToString("N"))));
     public MobileOptions Options => Repository.Options(AccountKey);
+    public (CloudConnection Connection, string Key) TransferSession() { var current = Current; return (current.Connection, current.Key); }
     public MobileClient(MobileRepository repository, IAccountVault vault) { Repository = repository; this.vault = vault; }
     public void LoadRemembered()
     {
@@ -83,6 +84,27 @@ public sealed class MobileClient : IDisposable
         using var response = await connection.Http.GetAsync(url, ct); await CloudConnection.Check(response, ct);
         return await response.Content.ReadFromJsonAsync(ApiJson.Default.PagedResultBrowserEntry, ct) ?? throw new IOException("目录结果为空。");
     }
+    public async Task<PagedResult<BrowserEntry>> Album(string folder, int page, CancellationToken ct, string? after = null)
+    {
+        var current = Current;
+        using var response = await current.Connection.Http.GetAsync("api/browser/media?folder=" + Uri.EscapeDataString(folder) + "&page=" + page + "&pageSize=24" + (after == null ? "" : "&after=" + Uri.EscapeDataString(after)), ct);
+        await CloudConnection.Check(response, ct);
+        return await response.Content.ReadFromJsonAsync(ApiJson.Default.PagedResultBrowserEntry, ct) ?? throw new IOException("相册响应为空。");
+    }
+    public async Task<MediaNeighbors> MediaNeighbors(Guid id, string folder, CancellationToken ct)
+    {
+        var current = Current;
+        using var response = await current.Connection.Http.GetAsync("api/browser/media/" + id + "/neighbors?folder=" + Uri.EscapeDataString(folder), ct);
+        await CloudConnection.Check(response, ct);
+        return await response.Content.ReadFromJsonAsync(ApiJson.Default.MediaNeighbors, ct) ?? throw new IOException("相册导航响应为空。");
+    }
+    public async Task<CaptureEnvironment> CaptureEnvironment(EnvironmentQuery query, CancellationToken ct)
+    {
+        var current = Current;
+        using var response = await current.Connection.Http.PostAsJsonAsync("api/mobile/environment", query, ApiJson.Default.EnvironmentQuery, ct);
+        await CloudConnection.Check(response, ct);
+        return await response.Content.ReadFromJsonAsync(ApiJson.Default.CaptureEnvironment, ct) ?? throw new IOException("环境查询响应为空。");
+    }
     public async Task<FolderSelection> CreateFolder(FolderSelection parent, string name, CancellationToken ct)
     {
         name = CloudPath.Normalize(name.Trim());
@@ -131,13 +153,16 @@ public sealed class MobileClient : IDisposable
     }
     public string PrepareCameraPhoto(string name, FolderSelection folder, MobileUploadMetadata metadata)
     {
-        if (Account == null || metadata.Kind != "camera" || !metadata.CaptureId.HasValue || metadata.CaptureId.Value == Guid.Empty)
+        var current = Current;
+        if (metadata.Kind != "camera" || !metadata.CaptureId.HasValue || metadata.CaptureId.Value == Guid.Empty)
             throw new InvalidOperationException("需要登录身份与有效拍摄编号。");
+        var extension = Path.GetExtension(name).ToLowerInvariant();
+        if (extension is not (".jpg" or ".mp4")) throw new ArgumentException("工程拍摄仅支持 JPEG 和 MP4。");
         var captures = Path.Combine(Repository.Home, "captures"); Directory.CreateDirectory(captures);
         var stem = Path.Combine(captures, metadata.CaptureId!.Value.ToString("N"));
-        AtomicFile.WriteText(stem + ".json", JsonSerializer.Serialize(new CameraDraft(metadata.CaptureId.Value, AccountKey,
-            MobileRepository.FileName(name), folder, metadata, producer), MobileJson.Default.CameraDraft));
-        return stem + ".jpg";
+        AtomicFile.WriteText(stem + ".json", JsonSerializer.Serialize(new CameraDraft(metadata.CaptureId.Value, current.Key,
+            MobileRepository.FileName(name), folder, metadata, producer, Extension: extension), MobileJson.Default.CameraDraft));
+        return stem + extension;
     }
     public async Task CompleteCameraPhoto(Guid id, CancellationToken ct)
     {
@@ -167,7 +192,8 @@ public sealed class MobileClient : IDisposable
                 if (draft.Account != AccountKey) continue;
                 if (!draft.Ready && draft.Producer == producer) continue;
                 var stem = Path.Combine(directory, draft.Id.ToString("N"));
-                var photo = stem + ".jpg"; var owned = Path.Combine(Repository.Home, "outbox", draft.Id.ToString("N"));
+                if (draft.Extension is not (".jpg" or ".mp4")) throw new IOException("拍摄恢复记录的媒体格式无效。");
+                var photo = stem + draft.Extension; var owned = Path.Combine(Repository.Home, "outbox", draft.Id.ToString("N"));
                 if (Repository.Jobs(draft.Account).Any(x => x.Id == draft.Id)) { File.Delete(manifest); if (File.Exists(photo)) File.Delete(photo); continue; }
                 var source = File.Exists(owned) ? owned : photo; if (!File.Exists(source)) continue;
                 await using var input = File.OpenRead(source); var size = input.Length;
@@ -211,7 +237,7 @@ public sealed class MobileClient : IDisposable
         }
         return added;
     }
-    public async Task<int> Pump(bool metered, bool charging, CancellationToken ct)
+    public async Task<int> Pump(bool wifiUnavailable, bool charging, CancellationToken ct)
     {
         if (!await transfers.WaitAsync(0, ct)) return 0;
         try
@@ -219,7 +245,7 @@ public sealed class MobileClient : IDisposable
             var current = Current; var connection = current.Connection;
             var account = current.Key;
             var options = Repository.Options(account);
-            if (options.PauseUploads || options.WifiOnly && metered || options.ChargingOnly && !charging) return 0;
+            if (options.PauseUploads || options.WifiOnly && wifiUnavailable || options.ChargingOnly && !charging) return 0;
             var folders = await Folders(connection, ct); var uploaded = 0;
             foreach (var original in Repository.Jobs(account).OrderBy(x => x.CreatedUtc))
             {

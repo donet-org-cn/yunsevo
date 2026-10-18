@@ -22,6 +22,19 @@ internal static class AppServices
     private static ConnectivityManager.NetworkCallback? networkChanges;
     private static CancellationTokenSource? activeTransfer;
     private static PowerChanges? powerChanges;
+    private static Network? activeNetwork;
+    private static UploadNetworkState uploadNetwork = new(false, false, false, false, true);
+    public static UploadNetworkState NetworkState => Volatile.Read(ref uploadNetwork);
+    public static bool WifiUnavailable => !NetworkState.AllowsWifiOnly;
+    public static string NetworkLabel
+    {
+        get
+        {
+            var current = NetworkState;
+            var label = !current.Connected ? "离线" : current.AllowsWifiOnly ? "Wi-Fi" : current.Cellular ? "移动网络" : "其他网络";
+            return "网络：" + label + (current.Vpn ? " · VPN" : "");
+        }
+    }
     public static Context Context { get; private set; } = null!;
     public static MobileClient Client { get; private set; } = null!;
     public static MobileRepository Repository => Client.Repository;
@@ -37,6 +50,12 @@ internal static class AppServices
         try { Client.LoadRemembered(); } catch (Exception ex) { Status = "读取登录失败：" + ex.Message; }
         Repository.Changed += () => Changed?.Invoke();
         Client.Progress += p => { Status = "上传中 · " + (p.Total == 0 ? 100 : p.Bytes * 100 / p.Total) + "%"; Changed?.Invoke(); };
+        var connectivity = (ConnectivityManager)Context.GetSystemService(Context.ConnectivityService)!;
+        activeNetwork = connectivity.ActiveNetwork;
+        if (activeNetwork != null) {
+            using var capabilities = connectivity.GetNetworkCapabilities(activeNetwork);
+            if (capabilities != null) uploadNetwork = ReadNetwork(capabilities);
+        }
         networkChanges = new NetworkChanges();
         ((ConnectivityManager)Context.GetSystemService(Context.ConnectivityService)!).RegisterDefaultNetworkCallback(networkChanges);
         powerChanges = new PowerChanges();
@@ -44,7 +63,9 @@ internal static class AppServices
         else Context.RegisterReceiver(powerChanges, new IntentFilter(Intent.ActionBatteryChanged));
         Schedule();
     }
-    public static bool Metered => ((ConnectivityManager)Context.GetSystemService(Context.ConnectivityService)!).IsActiveNetworkMetered;
+    private static UploadNetworkState ReadNetwork(NetworkCapabilities capabilities) => new(true,
+        capabilities.HasTransport(TransportType.Wifi), capabilities.HasTransport(TransportType.Cellular),
+        capabilities.HasTransport(TransportType.Vpn), !capabilities.HasCapability(NetCapability.NotMetered));
     public static bool Charging
     {
         get
@@ -56,7 +77,8 @@ internal static class AppServices
     public static void Kick()
     {
         Schedule();
-        _ = Run(CancellationToken.None);
+        // MediaStore enumeration and durable queue writes must not inherit the activity's UI context.
+        _ = Task.Run(() => Run(CancellationToken.None));
     }
     public static async Task Run(CancellationToken ct)
     {
@@ -66,7 +88,7 @@ internal static class AppServices
         {
             await Client.RecoverCapturedPhotos(ct);
             if (Client.Options.PauseUploads) { Status = "上传已暂停"; return; }
-            if (Client.Options.WifiOnly && Metered) { Status = "等待 Wi-Fi，文件已保存在上传队列"; return; }
+            if (Client.Options.WifiOnly && WifiUnavailable) { Status = "等待 Wi-Fi，文件已保存在上传队列"; return; }
             if (Client.Options.ChargingOnly && !Charging) { Status = "等待连接充电器"; return; }
             await Client.Resume(ct);
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct); activeTransfer = budget;
@@ -76,7 +98,7 @@ internal static class AppServices
             {
                 var added = Client.Options.AutoBackup && AndroidAlbumSource.HasPermission(Context)
                     ? await Client.ScanAlbum(new AndroidAlbumSource(Context), DeviceName, budget.Token) : 0;
-                completed += await Client.Pump(Metered, Charging, budget.Token);
+                completed += await Client.Pump(WifiUnavailable, Charging, budget.Token);
                 if (added == 0 || Client.Repository.Jobs(Client.AccountKey).Any(x => x.State == "failed")) break;
             } while (!budget.IsCancellationRequested);
             var pending = Repository.Jobs(Client.AccountKey).Count(x => x.State is not ("completed" or "cancelled"));
@@ -99,17 +121,18 @@ internal static class AppServices
         }
         var component = new ComponentName(Context, Java.Lang.Class.FromType(typeof(BackupJob)));
         var options = Client.Options;
-        if (options.PauseUploads || options.WifiOnly && Metered || options.ChargingOnly && !Charging)
+        if (options.PauseUploads || options.WifiOnly && WifiUnavailable || options.ChargingOnly && !Charging)
         {
             try { activeTransfer?.Cancel(); } catch (ObjectDisposedException) { }
         }
+        // The app checks active Wi-Fi itself, preserving VPN routing; UNMETERED would block Wi-Fi VPNs.
         var periodic = new JobInfo.Builder(3080, component)
-            .SetRequiredNetworkType(options.WifiOnly ? NetworkType.Unmetered : NetworkType.Any)!
+            .SetRequiredNetworkType(NetworkType.Any)!
             .SetRequiresCharging(options.ChargingOnly)!.SetPersisted(true)!.SetPeriodic(15 * 60 * 1000)!.Build();
         scheduler.Schedule(periodic!);
         if (!options.PauseUploads)
             scheduler.Schedule(new JobInfo.Builder(3081, component)
-                .SetRequiredNetworkType(options.WifiOnly ? NetworkType.Unmetered : NetworkType.Any)!
+                .SetRequiredNetworkType(NetworkType.Any)!
                 .SetRequiresCharging(options.ChargingOnly)!.SetMinimumLatency(1500)!.Build()!);
     }
     private sealed class MediaObserver() : ContentObserver(new Handler(Looper.MainLooper!))
@@ -118,14 +141,23 @@ internal static class AppServices
     }
     private sealed class NetworkChanges : ConnectivityManager.NetworkCallback
     {
-        public override void OnAvailable(Network network) => Schedule();
         public override void OnCapabilitiesChanged(Network network, NetworkCapabilities capabilities)
         {
-            if (Client.Options.WifiOnly && !capabilities.HasCapability(NetCapability.NotMetered))
+            activeNetwork = network;
+            var next = ReadNetwork(capabilities);
+            var previous = Interlocked.Exchange(ref uploadNetwork, next);
+            if (!next.Connected || Client.Options.WifiOnly && !next.AllowsWifiOnly)
                 try { activeTransfer?.Cancel(); } catch (ObjectDisposedException) { }
+            if (next != previous) { Changed?.Invoke(); Kick(); }
         }
         public override void OnLost(Network network)
-        { try { activeTransfer?.Cancel(); } catch (ObjectDisposedException) { } }
+        {
+            if (activeNetwork?.Equals(network) != true) return;
+            activeNetwork = null;
+            Volatile.Write(ref uploadNetwork, new(false, false, false, false, true));
+            try { activeTransfer?.Cancel(); } catch (ObjectDisposedException) { }
+            Changed?.Invoke(); Schedule();
+        }
     }
     private sealed class PowerChanges : BroadcastReceiver
     {

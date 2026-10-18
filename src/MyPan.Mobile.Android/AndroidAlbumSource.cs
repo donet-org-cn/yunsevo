@@ -34,7 +34,7 @@ internal sealed class AndroidAlbumSource(Context context) : IAlbumSource
                 var size = cursor.GetLong(2); var modified = cursor.GetLong(3); var taken = cursor.GetLong(4);
                 var mime = cursor.GetString(5) ?? (video ? "video/mp4" : "image/jpeg");
                 var mediaPath = cursor.GetString(7) ?? "";
-                if (mediaPath.StartsWith("Pictures/Yunsevo/", StringComparison.OrdinalIgnoreCase) || mediaPath.Contains("/Pictures/Yunsevo/", StringComparison.OrdinalIgnoreCase)) continue;
+                if (new[] { "Pictures/Yunsevo/", "Movies/Yunsevo/" }.Any(folder => mediaPath.StartsWith(folder, StringComparison.OrdinalIgnoreCase) || mediaPath.Contains("/" + folder, StringComparison.OrdinalIgnoreCase))) continue;
                 var key = ContentUris.WithAppendedId(uri, id)!.ToString();
                 var generation = OperatingSystem.IsAndroidVersionAtLeast(30) ? ":" + cursor.GetLong(8) : "";
                 yield return new(key!, size + ":" + modified + generation, name, size, cursor.GetString(6) ?? "相册",

@@ -51,6 +51,24 @@ async Task Stop()
 var vault = new MemoryVault();
 try
 {
+    Assert(new UploadNetworkState(true, true, false, false, false).AllowsWifiOnly, "Direct Wi-Fi permits Wi-Fi-only uploads");
+    Assert(new UploadNetworkState(true, true, false, true, true).AllowsWifiOnly, "Metered VPN over Wi-Fi permits Wi-Fi-only uploads");
+    Assert(!new UploadNetworkState(true, false, true, true, true).AllowsWifiOnly, "VPN over cellular cannot bypass Wi-Fi-only uploads");
+    Assert(!new UploadNetworkState(true, false, true, false, false).AllowsWifiOnly, "Unmetered cellular is still blocked by Wi-Fi-only policy");
+    Assert(!new UploadNetworkState(true, true, true, true, false).AllowsWifiOnly, "VPN with mixed Wi-Fi and cellular stays blocked");
+    Assert(!new UploadNetworkState(true, false, false, true, false).AllowsWifiOnly, "Undisclosed VPN transport stays blocked");
+    Assert(!new UploadNetworkState(false, true, false, false, false).AllowsWifiOnly, "Disconnected Wi-Fi cannot start uploads");
+    Assert(new UploadNetworkState(true, true, false, false, true).AllowsWifiOnly, "Metered Wi-Fi obeys the selected transport policy");
+    var frameClock = new VideoFrameClock();
+    const long mono = 900_000_000_000L, sensor = mono + 201_634_000_000_000L;
+    Assert(frameClock.Timestamp(sensor, mono) == mono, "Camera boot-time offset is mapped into the encoder monotonic clock");
+    Assert(frameClock.Timestamp(sensor + 33_000_000, mono + 33_000_000) == mono + 33_000_000, "Video frame spacing preserves real sensor timing");
+    Assert(frameClock.Timestamp(sensor + 33_000_000, mono + 34_000_000) > mono + 33_000_000, "Repeated camera timestamps remain strictly monotonic");
+    Assert(frameClock.Timestamp(sensor + 99_000_000_000_000L, mono + 70_000_000) == mono + 70_000_000, "Discontinuous camera timestamps cannot add hours to a video");
+    frameClock.Reset();
+    Assert(frameClock.Timestamp(sensor, mono) == mono, "Every recording starts with a fresh timestamp mapping");
+    Assert(frameClock.Timestamp(sensor + 11_000_000_000L, mono + 11_000_000_000L) - mono == 11_000_000_000L, "An eleven-second recording has an eleven-second video timeline");
+    Assert(frameClock.Timestamp(sensor - 1, mono + 11_033_000_000L) == mono + 11_033_000_000L, "Backward sensor timestamps recover without reversing presentation time");
     await Start();
     var repository = new MobileRepository(Path.Combine(root, "phone"));
     using var mobile = new MobileClient(repository, vault);
@@ -59,11 +77,12 @@ try
     var home = (await mobile.Folders(default)).Single(x => x.Path == "个人/mobileowner");
     var project = await mobile.CreateFolder(new(home.Id, home.Path, home.Category), "示范工程", default);
     var metadata = new MobileUploadMetadata("camera", DateTimeOffset.UtcNow, project.Id, "伪造目录名",
-        "一号楼", "<script>photo-note</script>", "工程：示范工程\n拍摄人：mobileowner\n时间：现场记录", DeviceName: "QA-Android", CaptureId: Guid.NewGuid());
+        "一号楼", "<script>photo-note</script>", "工程：示范工程\n拍摄人：mobileowner\n时间：现场记录", DeviceName: "QA-Android", CaptureId: Guid.NewGuid(),
+        Environment: new("测试工地", "Fixture", new("多云", 23, DateTimeOffset.UtcNow, "Fixture", "https://example.com", "Fixture data", Forecast: true), DateTimeOffset.UtcNow));
     var photoBytes = Encoding.UTF8.GetBytes("watermarked photo fixture");
     var photo = await mobile.Stage(new MemoryStream(photoBytes), "现场照片.jpg", project, metadata, "", default);
     Assert(File.Exists(repository.LocalPath(photo)), "Camera output is staged durably before any network upload");
-    Assert(await mobile.Pump(true, true, default) == 0, "Wi-Fi-only policy prevents metered uploads");
+    Assert(await mobile.Pump(true, true, default) == 0, "Wi-Fi-only policy prevents uploads without Wi-Fi");
     Assert(await mobile.Pump(false, true, default) == 1, "Camera queue uploads when network policy permits");
     var uploaded = repository.Jobs(mobile.AccountKey).Single(x => x.Id == photo.Id).Completed!;
     Assert(uploaded.Origin?.Photographer?.UserId == mobile.Account!.Login.User.Id &&
@@ -72,6 +91,7 @@ try
         "Project name and routing are resolved from the authorized server folder");
     Assert(uploaded.Origin.ContentSha256 == Convert.ToHexString(SHA256.HashData(photoBytes)), "Provenance is bound to the committed content hash");
     Assert(uploaded.Origin.Watermark == metadata.Watermark && uploaded.Origin.DeviceName == "QA-Android", "Watermark text and device source survive upload");
+    Assert(uploaded.Origin.Environment?.Weather?.Forecast == true && uploaded.Origin.Environment.Address == "测试工地", "Address and timestamped forecast provenance survive upload");
     Assert(!File.Exists(repository.LocalPath(photo)), "Private upload cache is released only after durable queue acknowledgement");
     var stateJson = File.ReadAllText(Path.Combine(repository.Home, "mobile-state.json"));
     Assert(!stateJson.Contains(mobile.Account.Login.AccessToken) && !stateJson.Contains(password), "Queue and preferences contain no login tokens or passwords");
@@ -169,6 +189,50 @@ try
     }
     var trash = await client.Connection.Http.GetFromJsonAsync("api/trash", ApiJson.Default.Catalog);
     Assert(trash!.Entries.Single(x => x.Id == uploaded.Id).Origin?.Photographer?.Username == "mobileowner", "Recycle-bin photos preserve who captured them");
+    var albumPage = await client.Album(project.Path, 1, default);
+    Assert(albumPage.Items.Any(x => x.Entry.Id == largeEntry.Id) && !albumPage.Items.Any(x => x.Entry.Id == uploaded.Id), "Cloud album includes videos and omits recycled photographs");
+    var smallPage = await client.Connection.Http.GetFromJsonAsync("api/browser/media?page=1&pageSize=1", ApiJson.Default.PagedResultBrowserEntry);
+    Assert(smallPage!.Items.Count == 1 && smallPage.Total > 1, "Cloud media pagination limits results without losing total count");
+    Assert(smallPage.NextCursor != null, "Media page provides an opaque continuation cursor");
+    var nextPage = await client.Connection.Http.GetFromJsonAsync("api/browser/media?pageSize=1&after=" + Uri.EscapeDataString(smallPage.NextCursor!), ApiJson.Default.PagedResultBrowserEntry);
+    Assert(nextPage!.Items.Count == 1 && nextPage.Items[0].Entry.Id != smallPage.Items[0].Entry.Id && nextPage.Total == smallPage.Total, "Cursor continuation advances without repeating the previous media item");
+    using (var invalidCursor = await client.Connection.Http.GetAsync("api/browser/media?after=not-a-cursor"))
+        Assert(invalidCursor.StatusCode == HttpStatusCode.BadRequest, "Malformed media cursors are rejected");
+    var pngBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAgAAAAEACAIAAABK8lkwAAADwElEQVR4nO3XQQ2DABBFQWhqgVOdVQQSOFQJpzqrj6ogm/BmBGz+7WXXbT8XAHoe0wMAmCEAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQ9bzu9O99XHece3t9P9MT4P58AABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAECUAAFECABAlAABRAgAQJQAAUQIAELVu+zm9AYABPgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAIgSAIAoAQCIEgCAKAEAiBIAgCgBAFia/mxqB0evgfeBAAAAAElFTkSuQmCC");
+    var thumbnailJob = await client.Stage(new MemoryStream(pngBytes), "thumbnail.png", project, new("shared"), "", default);
+    await client.Pump(false,true,default);
+    var thumbnailEntry = client.Repository.Jobs(client.AccountKey).Single(x=>x.Id==thumbnailJob.Id).Completed!;
+    byte[] thumbnail;
+    using (var response = await client.Connection.Http.GetAsync("api/media/" + thumbnailEntry.Id + "/thumbnail?version=" + thumbnailEntry.Version))
+    { await CloudConnection.Check(response,default); thumbnail = await response.Content.ReadAsByteArrayAsync(); }
+    var dimensions = JpegDimensions(thumbnail);
+    Assert(dimensions == (256,128) && thumbnail.Length < 256*1024, "Native AOT server creates a real JPEG thumbnail bounded to 256 pixels");
+    using (var response = await client.Connection.Http.GetAsync("api/media/"+thumbnailEntry.Id+"/thumbnail"))
+        Assert((await response.Content.ReadAsByteArrayAsync()).SequenceEqual(thumbnail), "Repeated thumbnail requests use the same versioned cached JPEG");
+    using (var response = await client.Connection.Http.GetAsync("api/media/"+thumbnailEntry.Id+"/thumbnail?version=stale"))
+        Assert(response.StatusCode==HttpStatusCode.Conflict, "Stale thumbnail versions are rejected");
+    var neighborhood = await client.MediaNeighbors(thumbnailEntry.Id,project.Path,default);
+    Assert(neighborhood.Current.Id==thumbnailEntry.Id && (neighborhood.Next!=null || neighborhood.Previous!=null), "Media navigation returns authorized adjacent items in the album");
+    var continued = await client.Connection.Http.GetFromJsonAsync("api/browser/media?pageSize=1&after="+Uri.EscapeDataString(smallPage.NextCursor!),ApiJson.Default.PagedResultBrowserEntry);
+    Assert(continued!.Items[0].Entry.Id==nextPage.Items[0].Entry.Id, "Adding a newer photo does not shift an existing continuation cursor");
+    using (var forbidden = await client.Connection.Http.GetAsync("api/admin/environment-settings"))
+        Assert(forbidden.StatusCode == HttpStatusCode.Forbidden, "An administrator using a device session cannot read web administration settings");
+    var draftId = Guid.NewGuid();
+    using (var recorder = new MobileClient(new MobileRepository(Path.Combine(root, "video-recovery")), vault))
+    {
+        recorder.LoadRemembered();
+        var target = recorder.PrepareCameraPhoto("capture.mp4", project, metadata with { CaptureId = draftId });
+        await File.WriteAllBytesAsync(target, "complete MP4 fixture"u8.ToArray());
+    }
+    using (var recovered = new MobileClient(new MobileRepository(Path.Combine(root, "video-recovery")), vault))
+    {
+        recovered.LoadRemembered(); await recovered.RecoverCapturedPhotos(default); await recovered.Pump(false, true, default);
+        Assert(recovered.Repository.Jobs(recovered.AccountKey).Single().Completed?.Path.EndsWith(".mp4") == true,
+            "A completed video draft survives a process restart and retains its MP4 extension");
+    }
+    var preference = client.Options with { SaveCameraToGallery = false, WatermarkStyle = "横幅记录", WatermarkBackground = false, WatermarkTextColor = "#FFFF00", IncludeWeather = true };
+    client.Repository.SetOptions(client.AccountKey, preference);
+    Assert(new MobileRepository(client.Repository.Home).Options(client.AccountKey) == preference, "Cloud-only saving and watermark appearance persist per account");
     var originalScope = client.AccountKey;
     var awaiting = await client.Stage(new MemoryStream("private pending"u8.ToArray()), "pending.txt", project, new("shared"), "", default);
     using (var web = new HttpClient { BaseAddress = new Uri(url) })
@@ -177,12 +241,38 @@ try
         await CloudConnection.Check(loginResponse, default);
         var webSession = (await loginResponse.Content.ReadFromJsonAsync(ApiJson.Default.LoginResult))!;
         web.DefaultRequestHeaders.Authorization = new("Bearer", webSession.AccessToken);
+        var fakeKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        using (var saved = await web.PutAsJsonAsync("api/admin/environment-settings", new EnvironmentSettings(Enabled: false, AddressProvider: "amap", WeatherProvider: "amap", AmapKey: fakeKey), ApiJson.Default.EnvironmentSettings))
+        {
+            await CloudConnection.Check(saved, default);
+            var value = (await saved.Content.ReadFromJsonAsync(ApiJson.Default.EnvironmentSettings))!;
+            Assert(value.HasAmapKey && value.AmapKey == null && !File.ReadAllText(Path.Combine(root,"server","environment-settings.json")).Contains(fakeKey), "Provider key is encrypted on disk and redacted in administrator responses");
+        }
+        using (var saved = await web.PutAsJsonAsync("api/admin/environment-settings", new EnvironmentSettings(Enabled: false), ApiJson.Default.EnvironmentSettings))
+        { await CloudConnection.Check(saved, default); Assert((await saved.Content.ReadFromJsonAsync(ApiJson.Default.EnvironmentSettings))!.HasAmapKey, "Saving settings with an empty key preserves the encrypted credential"); }
+        var unavailable = await client.CaptureEnvironment(new(39.9,116.4), default);
+        Assert(unavailable.Weather == null && unavailable.Address == null && unavailable.WeatherError != null, "Disabled environment services report unavailable without inventing weather or an address");
+        using (var invalid = await web.PostAsJsonAsync("api/mobile/environment", new EnvironmentQuery(91,116), ApiJson.Default.EnvironmentQuery))
+            Assert(invalid.StatusCode == HttpStatusCode.BadRequest, "Environment lookup rejects out-of-range coordinates");
+        using (var backupResponse = await web.GetAsync("api/admin/backup"))
+        {
+            await CloudConnection.Check(backupResponse, default);
+            using var zip = new System.IO.Compression.ZipArchive(new MemoryStream(await backupResponse.Content.ReadAsByteArrayAsync()));
+            Assert(zip.GetEntry("data/environment-settings.json") != null && zip.GetEntry("data/environment.key") != null, "Migration backup includes encrypted provider settings and their decryption key");
+        }
+        using (var saved = await web.PutAsJsonAsync("api/admin/environment-settings", new EnvironmentSettings(Enabled: false, ClearAmapKey: true), ApiJson.Default.EnvironmentSettings))
+        { await CloudConnection.Check(saved, default); Assert(!(await saved.Content.ReadFromJsonAsync(ApiJson.Default.EnvironmentSettings))!.HasAmapKey, "Administrator can explicitly remove a provider credential"); }
         using var response = await web.PostAsJsonAsync("api/admin/users", new SaveUser("seconduser", "Second user", password), ApiJson.Default.SaveUser);
         await CloudConnection.Check(response, default);
     }
     var switchingAlbum = new FixtureAlbum { BeforeEnumerate = () => client.Login(url, "seconduser", password, default) };
     Assert(await client.ScanAlbum(switchingAlbum, "QA-Android", default) == 0 && client.Repository.Jobs(client.AccountKey).Count == 0,
         "An album scan stops when the account changes while media is being enumerated");
+    Assert(!(await client.Album("", 1, default)).Items.Any(x => x.Entry.Path.StartsWith(project.Path + "/")), "Cloud album does not expose another account's private engineering media");
+    using (var deniedThumb = await client.Connection!.Http.GetAsync("api/media/"+thumbnailEntry.Id+"/thumbnail"))
+        Assert(deniedThumb.StatusCode==HttpStatusCode.Forbidden, "A cached thumbnail remains protected after switching to an unauthorized account");
+    using (var deniedNavigation = await client.Connection.Http.GetAsync("api/browser/media/"+thumbnailEntry.Id+"/neighbors"))
+        Assert(deniedNavigation.StatusCode==HttpStatusCode.NotFound, "Media navigation hides another account's private collection");
     Assert(await client.Pump(false, true, default) == 0 && client.Repository.Jobs(originalScope).Single(x => x.Id == awaiting.Id).State == "pending",
         "Signing into another account cannot upload the previous account's private queue");
     var staleRejected = false;
@@ -197,6 +287,19 @@ try
 }
 catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
 finally { await Stop(); await File.WriteAllTextAsync(Path.Combine(root, "server.log"), serverLog.Replace(password, "[redacted]")); }
+
+static (int Width,int Height) JpegDimensions(byte[] bytes)
+{
+    for (var index=2;index+8<bytes.Length;)
+    {
+        if(bytes[index++]!=0xff)break;
+        var marker=bytes[index++];if(marker is 0xd8 or 0xd9)continue;
+        var length=(bytes[index]<<8)|bytes[index+1];if(length<2||index+length>bytes.Length)break;
+        if(marker is 0xc0 or 0xc1 or 0xc2)return((bytes[index+5]<<8)|bytes[index+6],(bytes[index+3]<<8)|bytes[index+4]);
+        index+=length;
+    }
+    throw new InvalidDataException("Thumbnail is not a complete JPEG image.");
+}
 
 sealed class MemoryVault : IAccountVault
 {

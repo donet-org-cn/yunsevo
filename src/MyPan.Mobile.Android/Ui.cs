@@ -67,6 +67,7 @@ internal static class Ui
             origin.Place == null ? null : "部位：" + origin.Place,
             origin.Note == null ? null : "备注：" + origin.Note,
             origin.Location == null ? null : "位置：" + origin.Location,
+            origin.Environment?.Weather is { } weather ? FormattableString.Invariant($"天气：{weather.Description} {weather.TemperatureC:0.#}°C · {weather.Source}{(weather.Forecast ? "（预报）" : "")} · {weather.DataUtc.ToLocalTime():MM-dd HH:mm}") : null,
             "上传人：" + origin.UploadedBy.DisplayName + "（" + origin.UploadedBy.Username + "）",
             "上传时间：" + origin.UploadedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
             origin.DeviceName == null ? null : "设备：" + origin.DeviceName,
