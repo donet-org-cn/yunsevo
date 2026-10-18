@@ -8,7 +8,7 @@ namespace MyPan.Server;
 public sealed record StoredUser(Guid Id, string Username, string DisplayName, bool IsAdmin, bool Disabled, string Salt, string PasswordHash);
 public sealed record StoredSession(string Hash, Guid UserId, DateTimeOffset ExpiresUtc, bool Device = false);
 public sealed record RequestActor(Guid Id, string Username, bool IsAdmin, bool WebAdmin = true);
-public sealed record StoredVersion(Guid EntryId, string Version, long Size, DateTimeOffset ModifiedUtc);
+public sealed record StoredVersion(Guid EntryId, string Version, long Size, DateTimeOffset ModifiedUtc, FileProvenance? Origin = null);
 
 public sealed partial class CloudStore
 {

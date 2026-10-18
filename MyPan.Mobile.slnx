@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/MyPan.Mobile.Core/MyPan.Mobile.Core.csproj" />
+  <Project Path="src/MyPan.Mobile.Android/MyPan.Mobile.Android.csproj" />
+  <Project Path="tests/MyPan.MobileTests/MyPan.MobileTests.csproj" />
+</Solution>

@@ -154,6 +154,7 @@
   async function preview(entry, trash = false) {
     if (!canPreview(entry)) return download(entry, trash);
     $('preview-title').textContent = entry.path; $('preview-content').replaceChildren(); $('preview-dialog').showModal();
+    showOrigin(entry);
     const ext = entry.path.split('.').pop().toLowerCase(), src = (trash ? '/api/trash/' + entry.id + '/preview' : '/api/preview/' + entry.id) + '?version=' + encodeURIComponent(entry.version);
     if (['png','jpg','jpeg','gif','webp','bmp','avif'].includes(ext)) {
       const img = document.createElement('img'); img.src = src; img.alt = entry.path; img.addEventListener('error', () => notify('图片无法预览，请检查格式或下载查看。')); $('preview-content').append(img);
@@ -164,6 +165,20 @@
       try { const response = await request(src, { headers: { Range: 'bytes=0-1048575' } }); const text = document.createElement('pre'); text.textContent = await response.text(); $('preview-content').append(text); if (entry.size > 1048576) { const note = document.createElement('p'); note.textContent = '仅显示前 1 MiB 内容。'; $('preview-content').append(note); } }
       catch (e) { $('preview-content').textContent = e.message; }
     }
+  }
+  function showOrigin(entry) {
+    const origin = entry.origin, panel = $('preview-origin');
+    panel.textContent = origin ? [
+      origin.photographer ? '拍摄人：' + origin.photographer.displayName + '（' + origin.photographer.username + '）' : '',
+      origin.project ? '工程：' + origin.project : '',
+      origin.capturedUtc ? '拍摄时间：' + new Date(origin.capturedUtc).toLocaleString('zh-CN') + '（设备上报）' : '',
+      origin.place ? '部位：' + origin.place : '',
+      origin.note ? '备注：' + origin.note : '',
+      origin.location ? '位置：' + origin.location : '',
+      '上传人：' + origin.uploadedBy.displayName + '（' + origin.uploadedBy.username + '）',
+      '上传时间：' + new Date(origin.uploadedUtc).toLocaleString('zh-CN'),
+      origin.deviceName ? '设备：' + origin.deviceName : ''
+    ].filter(Boolean).join(' · ') : '历史文件，未记录拍摄或上传来源。';
   }
   $('preview-dialog').addEventListener('close', () => { for (const media of $('preview-content').querySelectorAll('video,audio')) { media.pause(); media.removeAttribute('src'); media.load(); } $('preview-content').replaceChildren(); });
   for (const closer of document.querySelectorAll('[data-close]')) closer.addEventListener('click', () => $(closer.dataset.close).close());
@@ -178,6 +193,9 @@
     }else if(route.view==='settings'){await loadSettings();showPage('settings-dialog');}
     else if(route.view==='audit'){pages.audit={page:route.page,size:route.pageSize};$('audit-user').value=route.userFilter;$('audit-kind').value=route.kindFilter;await loadAudit();showPage('audit-dialog');}
   }, actions(entry, actions, trash) {
+    if (!entry.isDirectory) actions.append(button('详情', () => {
+      $('preview-title').textContent = entry.path; $('preview-content').replaceChildren(); showOrigin(entry); $('preview-dialog').showModal();
+    }));
     if (trash) { if (!entry.isDirectory && canPreview(entry)) actions.append(button('预览', () => preview(entry, true))); if ((entry.access & 2) !== 0) actions.append(button('永久删除', async () => { if (!confirm('永久删除“' + entry.path + '”及其历史版本？此操作不可恢复。')) return; await json('/api/trash/' + entry.id, 'DELETE'); await refresh(); notify('已永久删除并释放配额'); })); return; }
     if (entry.isDirectory) { if ((entry.access & 4) !== 0) actions.append(button('设置', () => policy(entry))); }
     else { if (canPreview(entry)) actions.append(button('预览', () => preview(entry))); actions.append(button('版本', () => versions(entry))); }

@@ -107,6 +107,7 @@
       const title = document.createElement(entry.isDirectory && !trash ? 'button' : 'span'); title.className = 'entry-name' + (entry.isDirectory && !trash ? ' folder-name' : ''); title.textContent = basename(entry.path); title.title = entry.path;
       if (entry.isDirectory && !trash) title.addEventListener('click', () => navigate(entry.path));
       const detail = document.createElement('span'); detail.className = 'entry-detail'; detail.textContent = trash || query ? entry.path : entry.isDirectory ? '文件夹' : (ext !== basename(entry.path).toLowerCase() ? ext.toUpperCase() + ' 文件' : '文件'); detail.title = detail.textContent;
+      if (entry.origin?.photographer) detail.textContent += ' · 拍摄：' + entry.origin.photographer.displayName;
       info.append(title, detail); cell.append(badge, info); nameCell.append(cell);
       const dateCell = document.createElement('td'); dateCell.textContent = new Date(trash && entry.deleted ? entry.deleted.time : entry.modifiedUtc).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
       if (trash && !entry.deleted) dateCell.textContent = '历史记录未留存';

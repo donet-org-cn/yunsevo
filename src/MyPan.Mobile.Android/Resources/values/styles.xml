@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="brand_teal">#088F97</color>
+  <style name="Yunsevo" parent="android:style/Theme.Material.Light.NoActionBar">
+    <item name="android:colorAccent">#088F97</item>
+    <item name="android:windowBackground">#F5F8FA</item>
+    <item name="android:statusBarColor">#F5F8FA</item>
+    <item name="android:navigationBarColor">#F5F8FA</item>
+    <item name="android:windowLightStatusBar">true</item>
+    <item name="android:windowLightNavigationBar">true</item>
+    <item name="android:fontFamily">sans</item>
+  </style>
+  <style name="Yunsevo.Camera" parent="Yunsevo">
+    <item name="android:statusBarColor">#0E1B23</item>
+    <item name="android:navigationBarColor">#0E1B23</item>
+    <item name="android:windowLightStatusBar">false</item>
+    <item name="android:windowLightNavigationBar">false</item>
+  </style>
+</resources>

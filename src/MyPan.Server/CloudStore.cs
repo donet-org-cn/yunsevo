@@ -208,10 +208,12 @@ public sealed partial class CloudStore : IDisposable
     }
 
     public async Task<CloudEntry> Upload(RequestActor actor, string path, Stream source, long? contentLength, string? expected,
-        bool createOnly, long limit, CancellationToken ct)
+        bool createOnly, long limit, CancellationToken ct, MobileUploadMetadata? metadata = null)
     {
         path = CloudPath.Normalize(path);
         ValidateUpload(actor, path, contentLength, expected, createOnly, limit);
+        ValidatePhoto(actor, path, metadata);
+        using var contentHash = metadata == null ? null : System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
         var version = Guid.NewGuid().ToString("N");
         var temp = System.IO.Path.Combine(root, "blobs", "upload-" + version);
         try
@@ -226,6 +228,7 @@ public sealed partial class CloudStore : IDisposable
                     while ((count = await source.ReadAsync(buffer.AsMemory(0, 128 * 1024), ct)) > 0)
                     {
                         total = checked(total + count);
+                        contentHash?.AppendData(buffer, 0, count);
                         if (total > limit) throw new StoreException(413, "超过单文件上传限制。");
                         await output.WriteAsync(buffer.AsMemory(0, count), ct);
                     }
@@ -234,7 +237,8 @@ public sealed partial class CloudStore : IDisposable
                 finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
             }
             if (contentLength.HasValue && total != contentLength) throw new StoreException(400, "上传长度不一致。");
-            return await CommitUpload(actor, path, temp, total, expected, createOnly, version, ct);
+            return await CommitUpload(actor, path, temp, total, expected, createOnly, version, ct, metadata,
+                contentHash == null ? null : Convert.ToHexString(contentHash.GetHashAndReset()));
         }
         finally { if (File.Exists(temp)) File.Delete(temp); }
     }
@@ -262,7 +266,8 @@ public sealed partial class CloudStore : IDisposable
         var snapshot = Volatile.Read(ref state); Require(snapshot, path, actor, 2);
         return snapshot.Entries.Find(x => x.Path.Equals(path, StringComparison.OrdinalIgnoreCase) && x.Version == version);
     }
-    internal async Task<CloudEntry> CommitUpload(RequestActor actor, string path, string temp, long total, string? expected, bool createOnly, string version, CancellationToken ct)
+    internal async Task<CloudEntry> CommitUpload(RequestActor actor, string path, string temp, long total, string? expected, bool createOnly, string version, CancellationToken ct,
+        MobileUploadMetadata? metadata = null, string? sha256 = null)
     {
             await gate.WaitAsync(ct);
             try
@@ -273,11 +278,12 @@ public sealed partial class CloudStore : IDisposable
                 CheckVersion(current, expected, createOnly);
                 if (current?.IsDirectory == true) throw new StoreException(409, "目标是目录。");
                 ValidateParent(entries, path);
-                var entry = new CloudEntry(current?.Id ?? Guid.NewGuid(), path, false, total, DateTimeOffset.UtcNow, version);
+                var entry = new CloudEntry(current?.Id ?? Guid.NewGuid(), path, false, total, DateTimeOffset.UtcNow, version,
+                    Origin: Provenance(actor, path, metadata, sha256));
                 if (current != null) entries.Remove(current);
                 entries.Add(entry);
                 var proposed = Retain(state with { Entries = entries, History = current == null ? state.History :
-                    [.. state.History, new(current.Id, current.Version, current.Size, current.ModifiedUtc)] });
+                    [.. state.History, new(current.Id, current.Version, current.Size, current.ModifiedUtc, current.Origin)] });
                 CheckQuotas(proposed, state);
                 File.Move(temp, Blob(entry.Id, version));
                 var before = state;

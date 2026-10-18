@@ -1,0 +1,47 @@
+name: Android development APK
+on: [workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [android-arm64, android-x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+      - name: Install .NET Android workload
+        run: dotnet workload install android --skip-manifest-update
+      - name: Android SDK platform
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Publish Mono AOT development APK
+        shell: pwsh
+        env:
+          MOBILE_RID: ${{ matrix.rid }}
+        run: ./scripts/publish-android.ps1 -Runtime $env:MOBILE_RID -AndroidSdk $env:ANDROID_HOME -JavaSdk $env:JAVA_HOME
+      - name: Confirm app and shared core AOT libraries
+        shell: bash
+        env:
+          MOBILE_RID: ${{ matrix.rid }}
+        run: |
+          package="artifacts/mobile/$MOBILE_RID/yunsevo-$MOBILE_RID.apk"
+          unzip -l "$package" | rg 'libaot-MyPan.Mobile.Android.dll.so'
+          unzip -l "$package" | rg 'libaot-MyPan.Mobile.Core.dll.so'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yunsevo-${{ matrix.rid }}-development
+          path: |
+            artifacts/mobile/${{ matrix.rid }}/yunsevo-*.apk
+            artifacts/mobile/${{ matrix.rid }}/README.md
+            artifacts/mobile/${{ matrix.rid }}/SHA256SUMS.txt
+            artifacts/mobile/${{ matrix.rid }}/screenshots/*.png
+          retention-days: 14

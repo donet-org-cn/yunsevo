@@ -162,7 +162,7 @@ app.MapGet("/api/entries", (HttpContext context) =>
     return result.Catalog == null ? Results.StatusCode(304) : Results.Json(result.Catalog, ApiJson.Default.Catalog);
 });
 app.MapGet("/api/sync-folders", (HttpContext context) => store.SyncFolders(Actor(context)));
-app.MapGet("/api/capabilities", () => new ServerCapabilities(maxUpload, true, UploadSessions.ChunkBytes));
+app.MapGet("/api/capabilities", () => new ServerCapabilities(maxUpload, true, UploadSessions.ChunkBytes, true));
 app.MapPost("/api/uploads", async (StartUpload request, HttpContext context, CancellationToken ct) => { context.Items["auditLabel"] = request.Path; return await uploads.Begin(Actor(context), request, ct); });
 app.MapGet("/api/uploads/{id:guid}", async (Guid id, HttpContext context, CancellationToken ct) => await uploads.Status(Actor(context), id, ct));
 app.MapPut("/api/uploads/{id:guid}", async (Guid id, HttpContext context, CancellationToken ct) => await uploads.Chunk(Actor(context), id, context.Request.Headers.ContentRange.ToString(), context.Request.Headers["X-Chunk-SHA256"].ToString(), context.Request.Body, context.Request.ContentLength, ct));
@@ -177,7 +177,7 @@ app.MapPut("/api/content", async (HttpContext context, CancellationToken ct) =>
 {
     var request = context.Request;
     return await store.Upload(Actor(context), request.Query["path"].ToString(), request.Body, request.ContentLength, request.Headers.IfMatch.ToString().Trim('"'),
-        request.Headers.IfNoneMatch == "*", maxUpload, ct);
+        request.Headers.IfNoneMatch == "*", maxUpload, ct, PhotoRequest.Read(context));
 });
 IResult FileResult((FileStream Stream, CloudEntry Entry) item, string type = "application/octet-stream") => Results.File(item.Stream, type, enableRangeProcessing: true,
     lastModified: item.Entry.ModifiedUtc, entityTag: new('"' + item.Entry.Version + '"'));

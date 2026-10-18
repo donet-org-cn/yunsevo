@@ -21,6 +21,8 @@ internal sealed class ClientDownloads(string directory)
             yield return ($"yunsevo-drive-{rid}{extension}", label, true);
             yield return ($"yunsevo-headless-{rid}{extension}", label + " · 无界面", false);
         }
+        yield return ("yunsevo-android-arm64.apk", "Android · ARM64", true);
+        yield return ("yunsevo-android-x64.apk", "Android · x64", true);
     }
 
     private FileInfo? Find(string fileName)
@@ -36,7 +38,8 @@ internal sealed class ClientDownloads(string directory)
     {
         var file = Find(fileName);
         return file is null ? Results.NotFound() : Results.File(file.FullName,
-            fileName.EndsWith(".zip", StringComparison.Ordinal) ? "application/zip" : "application/gzip",
+            fileName.EndsWith(".apk", StringComparison.Ordinal) ? "application/vnd.android.package-archive" :
+                fileName.EndsWith(".zip", StringComparison.Ordinal) ? "application/zip" : "application/gzip",
             fileDownloadName: fileName, lastModified: file.LastWriteTimeUtc, enableRangeProcessing: true);
     }
 
@@ -50,7 +53,7 @@ internal sealed class ClientDownloads(string directory)
             var size = (file.Length / 1048576d).ToString("0.#", CultureInfo.InvariantCulture);
             html.Append($"<a class=\"client-download{(desktop ? "" : " headless-download")}\" href=\"/downloads/{name}\" download>")
                 .Append("<svg aria-hidden=\"true\"><use href=\"#i-download\"/></svg><span><strong>")
-                .Append(desktop ? "沄序 Drive" : "沄序无界面客户端")
+                .Append(name.EndsWith(".apk", StringComparison.Ordinal) ? "沄序手机版" : desktop ? "沄序 Drive" : "沄序无界面客户端")
                 .Append($"</strong><small>{label} · {size} MB</small></span><span class=\"download-arrow\" aria-hidden=\"true\">↓</span></a>");
         }
         return html.Length > 0 ? html.ToString() : "<p class=\"field-help\">客户端下载包尚未发布，请联系管理员。</p>";

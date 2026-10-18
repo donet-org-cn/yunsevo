@@ -87,6 +87,7 @@ internal sealed class UploadSessions
         request = request with { Path = CloudPath.Normalize(request.Path) };
         if (request.Sha256.Length != 64 || request.Sha256.Any(x => !char.IsAsciiHexDigit(x))) throw new StoreException(400, "需要有效的 SHA-256 校验值。");
         store.ValidateUpload(actor, request.Path, request.Length, request.Version, request.CreateOnly, limit);
+        store.ValidatePhoto(actor, request.Path, request.Metadata);
         await createGate.WaitAsync(ct);
         try
         {
@@ -161,7 +162,8 @@ internal sealed class UploadSessions
                 {
                     if (input.Length != upload.Offset || !Convert.ToHexString(await SHA256.HashDataAsync(input, ct)).Equals(upload.Request.Sha256, StringComparison.OrdinalIgnoreCase)) throw new StoreException(400, "完整文件校验失败，请取消并重新上传。");
                 }
-                var entry = await store.CommitUpload(actor, upload.Request.Path, Part(id), upload.Request.Length, upload.Request.Version, upload.Request.CreateOnly, upload.Version, ct);
+                var entry = await store.CommitUpload(actor, upload.Request.Path, Part(id), upload.Request.Length, upload.Request.Version, upload.Request.CreateOnly, upload.Version, ct,
+                    upload.Request.Metadata, upload.Request.Sha256.ToUpperInvariant());
                 Save(upload with { Completed = entry }); return entry;
             }
             finally { stripe.Release(); }

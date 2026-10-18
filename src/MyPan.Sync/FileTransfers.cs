@@ -51,14 +51,17 @@ public static class FileTransfers
         }
     }
     public static async Task<CloudEntry> Upload(CloudConnection connection, string remote, Stream source, string? version, string account, string cacheDirectory,
-        CancellationToken ct, Action<long, long>? progress = null, string? sha256 = null)
+        CancellationToken ct, Action<long, long>? progress = null, string? sha256 = null, MobileUploadMetadata? metadata = null)
     {
         await TransferLimits.Uploads.WaitAsync(ct);
         try
         {
+            if (metadata != null && !(await connection.Capabilities(ct)).FileProvenance)
+                throw new InvalidOperationException("服务端需要升级后才能记录手机拍摄和上传信息。");
             if (source.Length >= ResumableThreshold && (await connection.Capabilities(ct)).ResumableUploads)
-                return await Resumable(connection, remote, source, version, account, cacheDirectory, progress, sha256, ct);
+                return await Resumable(connection, remote, source, version, account, cacheDirectory, progress, sha256, ct, metadata);
             using var request = new HttpRequestMessage(HttpMethod.Put, "api/content?path=" + Uri.EscapeDataString(remote)) { Content = new StreamContent(new BorrowedStream(source, progress)) };
+            if (metadata != null) request.Headers.Add("X-MyPan-Photo", Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(metadata, ApiJson.Default.MobileUploadMetadata)));
             request.Headers.ExpectContinue = source.Length > 1048576;
             if (version == null) request.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Any); else request.Headers.IfMatch.Add(new('"' + version + '"'));
             using var response = await connection.Http.SendAsync(request, ct); await CloudConnection.Check(response, ct);
@@ -67,12 +70,13 @@ public static class FileTransfers
         finally { TransferLimits.Uploads.Release(); }
     }
     private static async Task<CloudEntry> Resumable(CloudConnection connection, string remote, Stream source, string? version, string account,
-        string cacheDirectory, Action<long, long>? progress, string? sha256, CancellationToken ct)
+        string cacheDirectory, Action<long, long>? progress, string? sha256, CancellationToken ct, MobileUploadMetadata? metadata)
     {
         source.Position = 0;
         sha256 ??= Convert.ToHexString(await SHA256.HashDataAsync(source, ct));
         source.Position = 0;
         var identity = connection.Http.BaseAddress + "\n" + account + "\n" + remote + "\n" + version + "\n" + source.Length + "\n" + sha256;
+        if (metadata != null) identity += "\n" + Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(metadata, ApiJson.Default.MobileUploadMetadata)));
         Directory.CreateDirectory(cacheDirectory);
         var checkpoint = Path.Combine(cacheDirectory, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))) + ".json");
         UploadStatus? status = null;
@@ -87,7 +91,7 @@ public static class FileTransfers
         }
         if (status == null)
         {
-            using var response = await connection.Http.PostAsJsonAsync("api/uploads", new StartUpload(remote, source.Length, version, version == null, sha256), ApiJson.Default.StartUpload, ct);
+            using var response = await connection.Http.PostAsJsonAsync("api/uploads", new StartUpload(remote, source.Length, version, version == null, sha256, metadata), ApiJson.Default.StartUpload, ct);
             await CloudConnection.Check(response, ct);
             status = await response.Content.ReadFromJsonAsync(ApiJson.Default.UploadStatus, ct) ?? throw new IOException("上传会话为空。");
             AtomicFile.WriteText(checkpoint, JsonSerializer.Serialize(new UploadCheckpoint(status.Id, remote, account, sha256, connection.Http.BaseAddress!.ToString()), TransferJson.Default.UploadCheckpoint));

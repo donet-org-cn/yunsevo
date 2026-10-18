@@ -176,7 +176,7 @@ public sealed partial class CloudStore
         Require(snapshot, file.Path, actor, 1);
         if (file.Version == version) return (OpenBlob(id, version), file);
         var old = snapshot.History.Find(x => x.EntryId == id && x.Version == version) ?? throw new StoreException(404, "版本不存在或已超过保留期限。");
-        return (OpenBlob(id, version), file with { Version = old.Version, Size = old.Size, ModifiedUtc = old.ModifiedUtc });
+        return (OpenBlob(id, version), file with { Version = old.Version, Size = old.Size, ModifiedUtc = old.ModifiedUtc, Origin = old.Origin });
         }
         finally { gate.Release(); }
     }
@@ -189,9 +189,9 @@ public sealed partial class CloudStore
             Require(state, current.Path, actor, 2); CheckVersion(current, expected, false);
             if (version == current.Version) return current;
             var old = state.History.Find(x => x.EntryId == id && x.Version == version) ?? throw new StoreException(404, "版本不存在。");
-            var restored = current with { Version = Guid.NewGuid().ToString("N"), ModifiedUtc = DateTimeOffset.UtcNow, Size = old.Size };
+            var restored = current with { Version = Guid.NewGuid().ToString("N"), ModifiedUtc = DateTimeOffset.UtcNow, Size = old.Size, Origin = old.Origin };
             var proposed = Retain(state with { Entries = state.Entries.Select(x => x.Id == id ? restored : x).ToList(),
-                History = [.. state.History, new(id, current.Version, current.Size, current.ModifiedUtc)] });
+                History = [.. state.History, new(id, current.Version, current.Size, current.ModifiedUtc, current.Origin)] });
             CheckQuotas(proposed, state);
             File.Copy(Blob(id, old.Version), Blob(id, restored.Version), false);
             var before = state; await CommitState(proposed); Prune(before, state);

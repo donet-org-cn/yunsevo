@@ -21,6 +21,8 @@ credentials/
 *.p12
 *.pem
 *.key
+*.keystore
+*.jks
 
 # Local tooling and diagnostic output
 .idea/

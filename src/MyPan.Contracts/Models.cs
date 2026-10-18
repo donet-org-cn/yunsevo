@@ -3,13 +3,13 @@ using System.Text.Json.Serialization;
 namespace MyPan.Contracts;
 
 public sealed record CloudEntry(Guid Id, string Path, bool IsDirectory, long Size,
-    DateTimeOffset ModifiedUtc, string Version, int Access = 7);
+    DateTimeOffset ModifiedUtc, string Version, int Access = 7, FileProvenance? Origin = null);
 public sealed record Catalog(long Revision, List<CloudEntry> Entries);
 public sealed record CreateFolder(string Path);
 public sealed record MoveEntry(string Path, string Version);
 public sealed record ApiError(string Error);
-public sealed record ServerCapabilities(long MaxUploadBytes, bool ResumableUploads = false, int UploadChunkBytes = 8388608);
-public sealed record StartUpload(string Path, long Length, string? Version, bool CreateOnly, string Sha256);
+public sealed record ServerCapabilities(long MaxUploadBytes, bool ResumableUploads = false, int UploadChunkBytes = 8388608, bool FileProvenance = false);
+public sealed record StartUpload(string Path, long Length, string? Version, bool CreateOnly, string Sha256, MobileUploadMetadata? Metadata = null);
 public sealed record UploadStatus(Guid Id, long Length, long Offset, int ChunkBytes, DateTimeOffset ExpiresUtc, CloudEntry? Completed = null);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true)]
@@ -19,6 +19,8 @@ public sealed record UploadStatus(Guid Id, long Length, long Offset, int ChunkBy
 [JsonSerializable(typeof(MoveEntry))]
 [JsonSerializable(typeof(ApiError))]
 [JsonSerializable(typeof(ServerCapabilities))]
+[JsonSerializable(typeof(MobileUploadMetadata))]
+[JsonSerializable(typeof(FileProvenance))]
 [JsonSerializable(typeof(StartUpload))]
 [JsonSerializable(typeof(UploadStatus))]
 [JsonSerializable(typeof(LoginRequest))]
