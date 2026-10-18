@@ -21,7 +21,22 @@ internal static class ScanRemote
         {
             var jobs = AppServices.Repository.Jobs(scan.Account); var sources = scan.UploadJobs?.Select(id => jobs.FirstOrDefault(x => x.Id == id)).ToList();
             if (sources == null || sources.Any(x => x?.Completed == null)) return;
+            var videos = scan.SourceVideoJobs?.Select(id => jobs.FirstOrDefault(x => x.Id == id)).ToList();
+            if (videos?.Any(x => x?.Completed == null) == true) return;
             var request = new StartReconstruction(scan.Folder.Id, scan.Name, sources.Select(x => new ReconstructionPhoto(x!.Completed!.Id, x.Completed.Version)).ToList(), Quality: scan.Quality, Subject: scan.Subject, ClientRequestId: scan.RemoteRequestId ?? scan.Id);
+            var onlyVideoFrames = videos?.Count == 1 && scan.Inputs?.All(name => name.StartsWith("frame-" + Path.GetFileNameWithoutExtension(videos[0]!.Completed!.Path) + "-", StringComparison.Ordinal)) == true;
+            if (scan.Quality == 1 && scan.Subject == "object")
+            {
+                using var capsResponse = await AppServices.Client.Connection!.Http.GetAsync("api/reconstruction/capabilities", ct); await CloudConnection.Check(capsResponse, ct);
+                var caps = await capsResponse.Content.ReadFromJsonAsync(ApiJson.Default.ReconstructionCapabilities, ct);
+                if (caps?.HighQuality == true)
+                    request = request with { Quality = 2, Backend = "cpu" };
+                if (onlyVideoFrames && caps?.HighQualityVideo == true)
+                {
+                    var video = videos![0]!.Completed!;
+                    request = request with { Photos = [], Video = new(video.Id, video.Version), Quality = 2, Backend = "cpu" };
+                }
+            }
             using var r = await AppServices.Client.Connection!.Http.PostAsJsonAsync("api/reconstruction/jobs", request, ApiJson.Default.StartReconstruction, ct); await CloudConnection.Check(r, ct);
             var job = await r.Content.ReadFromJsonAsync(ApiJson.Default.ReconstructionJob, ct) ?? throw new IOException("服务端任务响应为空。"); ScanStore.Edit(scan.Id, x => x with { State = "remote", RemoteJob = job.Id, Message = job.Message });
         }

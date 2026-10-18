@@ -67,14 +67,15 @@ public sealed class ScanActivity : Activity
             body.AddView(Ui.Button(this, "新建扫描", () => _ = Run(Create)));
             foreach (var value in ScanStore.List())
             {
-                var copy = value; body.AddView(Ui.Button(this, value.Name + " · " + State(value.State) + " · " + ScanStore.Files(value.Id).Length + " 张", () => { selected = copy.Id; Render(); }, false));
+                var copy = value; body.AddView(Ui.Button(this, value.Name + (value.DerivedFrom.HasValue ? " · 重选 " + value.CreatedUtc.ToLocalTime().ToString("MM-dd HH:mm") : "") + " · " + State(value.State) + " · " + ScanStore.Files(value.Id).Length + " 张", () => { selected = copy.Id; Render(); }, false));
             }
             body.AddView(Ui.Text(this, "先支持有纹理的静止物体／设备。透明、反光、纯色表面难以重建；模型为相对尺寸，不作为工程测量依据。", 13)); return;
         }
         var scan = ScanStore.Get(selected.Value); var files = ScanStore.Files(scan.Id);
         body.AddView(Ui.Button(this, "‹ 所有扫描", () => { selected = null; Render(); }, false));
         body.AddView(Ui.Text(this, scan.Name, 22, true)); body.AddView(Ui.Text(this, Ui.PathLabel(scan.Folder.Path) + " · " + (scan.Subject == "object" ? "物体／设备" : "房间／现场（试验）"), 13));
-        body.AddView(Ui.Text(this, files.Length + "/72 张原始照片 · " + State(scan.State), 16, true));
+        body.AddView(Ui.Text(this, files.Length + "/" + ScanStore.MaxPhotos + " 张原始照片 · " + State(scan.State), 16, true));
+        if (scan.DerivedFrom.HasValue) body.AddView(Ui.Text(this, "重新选帧的独立版本 · 原扫描和旧模型仍在「所有扫描」中", 12));
         var progress = new ProgressBar(this, null, global::Android.Resource.Attribute.ProgressBarStyleHorizontal) { Max = 100, Progress = scan.Progress }; body.AddView(progress);
         var message = Ui.Text(this, ReconstructionMessages.Error(scan.Message), 13); message.SetTextIsSelectable(true); body.AddView(message);
         var working = scan.State is "running" or "remote" or "uploading" or "staging";
@@ -84,20 +85,23 @@ public sealed class ScanActivity : Activity
             body.AddView(Ui.Button(this, "引导拍摄 · 无水印原片", () => Camera(scan.Id)));
             body.AddView(Ui.Button(this, "环绕录像 · 自动选帧", () => Camera(scan.Id, true), false));
             body.AddView(Ui.Button(this, "从视频自动选帧", () => { if (busy) return; importing = scan.Id; StartActivityForResult(new Intent(Intent.ActionOpenDocument).AddCategory(Intent.CategoryOpenable)!.SetType("video/*"), 974); }, false));
-            foreach (var video in Directory.GetFiles(ScanStore.Home(scan.Id), "video-*.mp4"))
-            {
-                var copy = video; body.AddView(Ui.Button(this, "重新选帧 · " + Path.GetFileName(video)[..14], () => _ = Run(() => ExtractVideo(scan.Id, copy)), false));
-            }
             body.AddView(Ui.Button(this, "从系统相册添加照片", () => { if (busy) return; importing = scan.Id; StartActivityForResult(new Intent(Intent.ActionOpenDocument).AddCategory(Intent.CategoryOpenable)!.SetType("image/*")!.PutExtra(Intent.ExtraAllowMultiple, true), 971); }, false));
             if (files.Length >= 6)
             {
-                body.AddView(Ui.Button(this, "手机本机生成", () => PickBackend(scan.Id)));
-                body.AddView(Ui.Button(this, "提交服务端生成", () => _ = Run(() => Submit(scan.Id)), false));
+                body.AddView(Ui.Button(this, "手机本机生成 · " + (scan.Quality == 1 ? "精细" : "快速"), () => PickBackend(scan.Id)));
+                body.AddView(Ui.Text(this, "本机精细：更密集的深度计算、多视角校验和小缺口修复；支持 Vulkan／CPU，无需上传。", 12));
+                body.AddView(Ui.Button(this, "上传原片和视频 · 服务端生成", () => _ = Run(() => Submit(scan.Id)), false));
             }
         }
-        if (!working && scan.Inputs == null)
-            body.AddView(Ui.Button(this, "生成质量：" + (scan.Quality == 1 ? "精细 · 原图贴图最高 4K" : "快速预览 · 原图贴图最高 2K"), () =>
-                new AlertDialog.Builder(this)!.SetTitle("三维生成质量")!.SetItems(new[] { "快速预览 · 2K 贴图", "精细 · 4K 贴图，耗时和内存更多" }, (_, choice) => { ScanStore.Edit(scan.Id, x => x with { Quality = choice.Which }); Render(); })!.Show(), false));
+        if (!working)
+        {
+            body.AddView(Ui.Button(this, "本机生成质量：" + (scan.Quality == 1 ? "精细" : "快速"), () =>
+                new AlertDialog.Builder(this)!.SetTitle("本机三维生成质量")!.SetItems(new[] { "快速 · 较低计算量，2K 贴图上限", "精细 · 多视角校验与小缺口修复，4K 贴图上限" }, (_, choice) => { ScanStore.Edit(scan.Id, x => x with { Quality = choice.Which }); Render(); })!.Show(), false));
+            foreach (var video in Directory.GetFiles(ScanStore.Home(scan.Id), "video-*.mp4"))
+            {
+                var copy = video; body.AddView(Ui.Button(this, "从原视频重新提取关键照片 · " + Path.GetFileName(video)[..14], () => Reextract(scan.Id, copy), false));
+            }
+        }
         if (!working && scan.Inputs != null && !scan.RemoteJob.HasValue) body.AddView(Ui.Button(this, "继续上传原片并提交", () => _ = Run(() => Submit(scan.Id)), false));
         if (!working) body.AddView(Ui.Button(this, "清理本机扫描", () =>
         {
@@ -108,6 +112,7 @@ public sealed class ScanActivity : Activity
         if (scan.State == "remote") body.AddView(Ui.Button(this, "取消服务端任务", () => _ = Run(async () => { using var r = await AppServices.Client.Connection!.Http.DeleteAsync("api/reconstruction/jobs/" + scan.RemoteJob, stop.Token); await CloudConnection.Check(r, stop.Token); await Poll(scan); Render(); }), false));
         if (File.Exists(ScanStore.Model(scan.Id)))
         {
+            if (!working && files.Length >= 6 && !scan.RemoteJob.HasValue) body.AddView(Ui.Button(this, "用原片提交服务端精细重建", () => _ = Run(async () => { ScanStore.Edit(scan.Id, x => x with { Quality = 1 }); await Submit(scan.Id); }), false));
             if (!working && files.Length >= 6) body.AddView(Ui.Button(this, "用原片重新生成 · 保留旧模型副本", () => PickBackend(scan.Id), false));
             body.AddView(Ui.Button(this, "旋转／缩放查看模型", () => StartActivity(new Intent(this, typeof(LocalModelActivity)).PutExtra("scan", scan.Id.ToString()))));
             if (!scan.ModelUpload.HasValue) body.AddView(Ui.Button(this, "上传模型到云端", () => _ = Run(async () =>
@@ -256,6 +261,15 @@ public sealed class ScanActivity : Activity
         catch (OperationCanceledException) { if (!stop.IsCancellationRequested) ScanStore.Edit(id, x => x with { Message = "已停止选帧，视频和原有照片已保留。" }); }
         finally { if (!IsDestroyed) { dialog.Dismiss(); Render(); } }
     }
+    private void Reextract(Guid id, string video)
+    {
+        if (busy) return;
+        new AlertDialog.Builder(this)!.SetTitle("重新提取关键照片")!.SetItems(new[] { "精细选帧 · 最多 96 张", "快速选帧 · 最多 48 张" }, (_, choice) => _ = Run(async () =>
+        {
+            var revision = await Task.Run(() => ScanStore.CreateVideoRevision(id, video, choice.Which == 0 ? 1 : 0, stop.Token));
+            selected = revision.Session.Id; Render(); await ExtractVideo(revision.Session.Id, revision.Video);
+        }))!.SetNegativeButton("取消", (_, _) => { })!.Show();
+    }
     private async Task<List<ReconstructionJob>> RemoteJobs()
     { using var r = await AppServices.Client.Connection!.Http.GetAsync("api/reconstruction/jobs", stop.Token); await CloudConnection.Check(r, stop.Token); return await r.Content.ReadFromJsonAsync(ApiJson.Default.ListReconstructionJob, stop.Token) ?? []; }
     private async Task Submit(Guid id)
@@ -274,7 +288,18 @@ public sealed class ScanActivity : Activity
                 ProjectFolderId: scan.Folder.Id, Note: "三维扫描原片 · " + scan.Id, DeviceName: AppServices.DeviceName, CaptureId: Guid.NewGuid()), scan.Name + "-" + scan.Id.ToString("N")[..8] + "/原始照片", stop.Token, expectedAccount: scan.Account);
             staged.Add(job.Id); ScanStore.Edit(id, x => x with { UploadJobs = staged.ToList() });
         }
-        ScanStore.Edit(id, x => x with { State = "uploading", Message = "原片进入持久上传队列，上传完成后自动提交服务端。" }); AppServices.Kick(); Render();
+        var videos = Directory.GetFiles(ScanStore.Home(id), "video-*.mp4").Order(StringComparer.Ordinal).ToArray();
+        var videoJobs = ScanStore.Get(id).SourceVideoJobs?.ToList() ?? [];
+        if (videoJobs.Count > videos.Length) throw new IOException("源视频发生变化，请新建扫描。");
+        for (var i = videoJobs.Count; i < videos.Length; i++)
+        {
+            await using var input = File.OpenRead(videos[i]);
+            var job = await AppServices.Client.Stage(input, Path.GetFileName(videos[i]), scan.Folder,
+                new("album", ProjectFolderId: scan.Folder.Id, Note: "三维扫描原视频 · " + scan.Id, DeviceName: AppServices.DeviceName, CaptureId: Guid.NewGuid()),
+                scan.Name + "-" + scan.Id.ToString("N")[..8] + "/原始视频", stop.Token, expectedAccount: scan.Account);
+            videoJobs.Add(job.Id); ScanStore.Edit(id, x => x with { SourceVideoJobs = videoJobs.ToList() });
+        }
+        ScanStore.Edit(id, x => x with { State = "uploading", Message = "原片和源视频进入持久上传队列，上传完成后自动提交服务端。" }); AppServices.Kick(); Render();
         }
         catch (Exception ex) { ScanStore.Edit(id, x => x with { State = "failed", Message = "原片准备未完成，可继续提交：" + ex.Message }); throw; }
     }

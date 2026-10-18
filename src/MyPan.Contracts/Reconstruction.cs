@@ -1,10 +1,10 @@
 namespace MyPan.Contracts;
 
-public sealed record ReconstructionCapabilities(bool Cpu, bool Vulkan, string? Device = null, bool Experimental = true, string? Error = null);
+public sealed record ReconstructionCapabilities(bool Cpu, bool Vulkan, string? Device = null, bool Experimental = true, string? Error = null, bool HighQuality = false, bool HighQualityVideo = false);
 public sealed record ReconstructionPhoto(Guid Id, string Version);
-public sealed record StartReconstruction(Guid FolderId, string Name, List<ReconstructionPhoto> Photos, string Backend = "auto", int Quality = 0, string Subject = "object", Guid? ClientRequestId = null);
+public sealed record StartReconstruction(Guid FolderId, string Name, List<ReconstructionPhoto> Photos, string Backend = "auto", int Quality = 0, string Subject = "object", Guid? ClientRequestId = null, ReconstructionPhoto? Video = null);
 public sealed record ReconstructionJob(Guid Id, Guid UserId, string Username, string Name, string State, int Progress,
-    string Message, string Backend, string Subject, int PhotoCount, DateTimeOffset CreatedUtc, DateTimeOffset UpdatedUtc, CloudEntry? Model = null);
+    string Message, string Backend, string Subject, int PhotoCount, DateTimeOffset CreatedUtc, DateTimeOffset UpdatedUtc, CloudEntry? Model = null, int Quality = 0);
 
 public static class ReconstructionMessages
 {
@@ -17,6 +17,11 @@ public static class ReconstructionMessages
         return text;
     }
     public static string Progress(string text) => text.StartsWith("bundle adjustment", StringComparison.Ordinal) ? "联合优化相机位置与空间点" :
+        text.StartsWith("fine depth consistency", StringComparison.Ordinal) ? "精细模式 · 多视角往返校验，剔除错误深度" :
+        text.StartsWith("fine supported", StringComparison.Ordinal) ? "精细模式 · 修补其他视角支持的小缺口" :
+        text.StartsWith("fine depth retained", StringComparison.Ordinal) ? "精细深度校验完成，开始表面融合" :
+        text.StartsWith("fine local", StringComparison.Ordinal) ? "手机精细模式 · 高密度深度与多视角校验" :
+        text.StartsWith("quick local", StringComparison.Ordinal) ? "手机快速模式" :
         text.StartsWith("registration candidate", StringComparison.Ordinal) ? "验证相机定位覆盖率" :
         text.StartsWith("recovering view", StringComparison.Ordinal) || text.StartsWith("recovered view", StringComparison.Ordinal) ? "重新匹配未定位的照片" :
         text.StartsWith("focused object", StringComparison.Ordinal) ? "定位中心物体，排除远处背景" : text.StartsWith("features ", StringComparison.Ordinal) ? "提取照片特征" :

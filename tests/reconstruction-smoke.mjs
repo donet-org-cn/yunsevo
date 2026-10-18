@@ -33,6 +33,8 @@ try{
  const submit={folderId:folder.id,name:'测试设备',photos,backend:'vulkan',subject:'object',quality:0,clientRequestId:'62f36db8-1576-46d0-ac83-9c02a491f151'};
  const invalid=await fetch(url+'/api/reconstruction/jobs',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({...submit,photos:photos.slice(0,5)})});assert(invalid.status===400,'Insufficient capture set is rejected');
  const duplicate=await fetch(url+'/api/reconstruction/jobs',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({...submit,photos:Array(6).fill(photos[0])})});assert(duplicate.status===400,'Duplicate photo references are rejected');
+ const qualityGpu=await fetch(url+'/api/reconstruction/jobs',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({...submit,quality:2})});assert(qualityGpu.status===400,'CPU quality worker never silently accepts explicit Vulkan');
+ if(!caps.highQuality){const unavailable=await fetch(url+'/api/reconstruction/jobs',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({...submit,quality:2,backend:'cpu'})});assert(unavailable.status===409,'Unconfigured quality worker is rejected before enqueue');}
  const job=await api('/api/reconstruction/jobs','POST',submit);assert(job.state==='queued'&&job.userId,'Durable job is owned by the authenticated account');
  const retry=await api('/api/reconstruction/jobs','POST',submit);assert(retry.id===job.id,'Retrying a mobile submission is idempotent');
  const cancelled=await api('/api/reconstruction/jobs','POST',{...submit,name:'已取消任务',clientRequestId:'eb44d72f-7551-49ca-a1dd-7d8be62499cd'});await api('/api/reconstruction/jobs/'+cancelled.id,'DELETE');assert((await api('/api/reconstruction/jobs')).find(x=>x.id===cancelled.id).state==='cancelled','Queued job cancellation is retained');
@@ -46,6 +48,7 @@ try{
  await until(()=>evaluate('!!window.MyPan&&window.MyPan.state.authenticated'),'restore browser session');
  await evaluate(`window.MyPan.state.folder=${JSON.stringify(folder.path)};document.getElementById('open-reconstruction').click()`);
  await until(()=>evaluate("document.querySelectorAll('#reconstruction-photos input').length===48"),'source photo checklist');
+ assert(await evaluate("document.getElementById('reconstruction-quality').value===''"),'Unavailable high-quality worker does not silently select a lower-quality engine');
  await until(()=>evaluate("document.querySelectorAll('#reconstruction-jobs .management-row').length===2"),'job list rendering');
  assert(await evaluate("document.getElementById('reconstruction-dialog').open&&document.querySelectorAll('#reconstruction-jobs .management-row').length===2"),'Web reconstruction dialog shows original photos and durable jobs');await screenshot('server-reconstruction');
  const completed=await until(async()=>{const value=(await api('/api/reconstruction/jobs')).find(x=>x.id===job.id);if(value.state==='failed')throw new Error(value.message);return value.state==='completed'?value:false;},'real mesh reconstruction',600000);

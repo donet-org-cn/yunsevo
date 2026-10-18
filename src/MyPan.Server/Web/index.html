@@ -18,7 +18,9 @@
     <p class="field-help">从当前云端文件夹选择同一物体的原片（6–120 张）；手机端也可引导绕拍或在本机生成。建议慢速绕拍、多角度补拍，透明和反光物体难以重建。模型为相对尺寸，不用于工程测量。</p>
     <form id="reconstruction-form"><label>模型名称<input id="reconstruction-name" maxlength="80" required placeholder="例如：水泵设备" autocomplete="off"></label>
     <label>计算方式<select id="reconstruction-backend"><option value="auto">自动（Vulkan 优先，CPU 回退）</option><option value="cpu">CPU</option><option value="vulkan">Vulkan GPU</option></select></label>
-    <label>精细度<select id="reconstruction-quality"><option value="0">草稿（较快）</option><option value="1">标准（较慢）</option></select></label>
+    <label>重建模式<select id="reconstruction-quality"><option value="2" selected>精细设备／实物 · CPU 多视角深度</option><option value="3">透明瓶身／光滑物体 · 轮廓外形重建</option><option value="1">本机算法对照 · CPU / Vulkan 精细深度</option><option value="0">快速草稿 · CPU / Vulkan</option></select></label>
+    <p id="reconstruction-quality-help" class="field-help">草稿和标准模式用于快速检查采集效果。</p>
+    <label>素材来源<select id="reconstruction-video"><option value="">使用下方勾选的原片</option></select></label>
     <p id="reconstruction-folder" class="field-help"></p><div id="reconstruction-photos"></div>
     <button id="reconstruction-submit" type="submit" class="primary">提交服务端生成</button></form>
     <div class="dialog-heading"><h3>我的重建任务</h3><button id="reconstruction-refresh" type="button" class="secondary">刷新</button></div>

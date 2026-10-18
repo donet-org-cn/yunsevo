@@ -12,6 +12,8 @@ using MyPan.Server;
 Console.OutputEncoding = Encoding.UTF8;
 if (!await ServerInstallation.EnsureInstalled(args)) return;
 var builder = WebApplication.CreateSlimBuilder(args);
+builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "reconstruction-quality.local.json"), optional: true, reloadOnChange: false)
+    .AddEnvironmentVariables().AddCommandLine(args);
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJson.Default);
@@ -30,7 +32,7 @@ using var store = new CloudStore(dataPath, apiKey);
 using var captureEnvironment = new CaptureEnvironmentService(store, dataPath);
 var uploads = new UploadSessions(store, dataPath, maxUpload, builder.Configuration.GetValue<long?>("MyPan:MaxPendingUploadBytes") ?? 40L * 1024 * 1024 * 1024);
 var audit = new AuditLog(Path.Combine(dataPath, "audit"));
-await using var reconstruction = new ReconstructionJobs(store, audit, dataPath, builder.Configuration["MyPan:ReconstructionEngine"] ?? Path.Combine(AppContext.BaseDirectory, "reconstruction", OperatingSystem.IsWindows() ? "yunsevo-reconstruct.exe" : "yunsevo-reconstruct"));
+await using var reconstruction = new ReconstructionJobs(store, audit, dataPath, builder.Configuration["MyPan:ReconstructionEngine"] ?? Path.Combine(AppContext.BaseDirectory, "reconstruction", OperatingSystem.IsWindows() ? "yunsevo-reconstruct.exe" : "yunsevo-reconstruct"), builder.Configuration["MyPan:ReconstructionQualityPython"], builder.Configuration["MyPan:ReconstructionQualityWorker"]);
 await using var protocols = new ProtocolManager(store, audit, dataPath, maxUpload, builder.Configuration["MyPan:SmbGatewayPath"]);
 var app = builder.Build();
 const string CookieName = "mypan-session";
@@ -113,6 +115,7 @@ WebInterface.Map(app);
 WebDav.Map(app, store, protocols, maxUpload);
 app.MapGet("/api/reconstruction/capabilities", async (HttpContext context, CancellationToken ct) => Results.Json(await reconstruction.Capabilities(ct), ApiJson.Default.ReconstructionCapabilities));
 app.MapGet("/api/reconstruction/jobs", (HttpContext context) => reconstruction.List(Actor(context)));
+app.MapGet("/api/reconstruction/jobs/{id:guid}/quality", (Guid id, HttpContext context) => Results.Bytes(reconstruction.QualityReport(id, Actor(context)), "application/json", "reconstruction-quality.json"));
 app.MapPost("/api/reconstruction/jobs", (StartReconstruction request, HttpContext context) => reconstruction.Create(Actor(context), request, context.RequestAborted));
 app.MapDelete("/api/reconstruction/jobs/{id:guid}", (Guid id, bool? purge, HttpContext context) => { reconstruction.Cancel(id, Actor(context), purge ?? false); return Results.NoContent(); });
 app.MapGet("/health", () => Results.Text("MyPan OK"));

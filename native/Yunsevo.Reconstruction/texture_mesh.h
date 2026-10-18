@@ -14,11 +14,14 @@ static void glb(const fs::path&path,const std::vector<Vertex>&mesh,const std::ve
   for(size_t j=0;j<faces.size();j+=3)for(int k=0;k<3;k++){auto a=faces[j+k],b=faces[j+(k+1)%3];if(smooth[a].dot(smooth[b])>.75){sum[a]+=smooth[b];sum[b]+=smooth[a];counts[a]++;counts[b]++;}}
   for(size_t i=0;i<smooth.size();i++){double length=cv::norm(sum[i]);if(length>1e-10)smooth[i]=sum[i]/length;}
  }
- const size_t total=faces.size()/3;std::vector<Vec3d> points(total),normals(total);std::vector<int> labels(total,-1);std::vector<double> scores(total);
+ const bool fine=dense>256;
+ const size_t total=faces.size()/3;std::vector<Vec3d> points(total),normals(total),geometric(total);std::vector<int> labels(total,-1);std::vector<double> scores(total),areas(total);
  Vec3d boundsLo(1e30,1e30,1e30),boundsHi(-1e30,-1e30,-1e30);
  for(size_t t=0;t<total;t++){
   Vec3d n(0,0,0),p(0,0,0);for(int k=0;k<3;k++){auto id=faces[t*3+k];auto&v=mesh[id];p+=Vec3d(v.x,-v.y,-v.z);n+=smooth[id];}
   points[t]=p/3.;double length=cv::norm(n);normals[t]=length>1e-10?n/length:Vec3d(0,1,0);
+  auto position=[&](int k){const auto&v=mesh[faces[t*3+k]];return Vec3d(v.x,-v.y,-v.z);};
+  Vec3d face=(position(1)-position(0)).cross(position(2)-position(0));areas[t]=cv::norm(face)*.5;geometric[t]=areas[t]>1e-15?face/(areas[t]*2):normals[t];
   for(int k=0;k<3;k++){boundsLo[k]=std::min(boundsLo[k],points[t][k]);boundsHi[k]=std::max(boundsHi[k],points[t][k]);}
  }
  auto viewScore=[&](size_t tri,int i){
@@ -27,8 +30,10 @@ static void glb(const fs::path&path,const std::vector<Vertex>&mesh,const std::ve
   int u=(int)std::round(df*q[0]/q[2]+dense*.5),v=(int)std::round(df*q[1]/q[2]+dense*.5);if(u<1||v<1||u>=dense-1||v>=dense-1)return 0.;
   float d=depths[i][v*dense+u];if(d<=0||std::abs(d-q[2])>q[2]*.055)return 0.;
   for(int k=0;k<3;k++){auto&v=mesh[faces[tri*3+k]];Vec3d a=c.R*Vec3d(v.x,-v.y,-v.z)+c.t;if(a[2]<=0)return 0.;double x=focal*a[0]/a[2]+mid,y=focal*a[1]/a[2]+mid;
-   if(x<c.photoRect.x+1||y<c.photoRect.y+1||x>=c.photoRect.x+c.photoRect.width-1||y>=c.photoRect.y+c.photoRect.height-1)return 0.;}
-  Vec3d view=center(c)-p;double cosine=std::abs(normals[tri].dot(view)/std::max(1e-10,cv::norm(view)));if(cosine<.12)return 0.;
+   if(x<c.photoRect.x+1||y<c.photoRect.y+1||x>=c.photoRect.x+c.photoRect.width-1||y>=c.photoRect.y+c.photoRect.height-1)return 0.;
+   if(fine){int dx=(int)std::round(df*a[0]/a[2]+dense*.5),dy=(int)std::round(df*a[1]/a[2]+dense*.5);if(dx<0||dy<0||dx>=dense||dy>=dense)return 0.;float measured=depths[i][dy*dense+dx];if(measured>0&&std::abs(measured-a[2])>a[2]*.04)return 0.;}}
+  Vec3d view=center(c)-p;view/=std::max(1e-10,cv::norm(view));
+  double cosine=normals[tri].dot(view);if(fine){if(geometric[tri].dot(view)<.02)return 0.;}else cosine=std::abs(cosine);if(cosine<.12)return 0.;
   double resolution=std::min(textureSide,c.sourceSide)/(double)std::max(c.photoRect.width,c.photoRect.height);
   return cosine*cosine*resolution*resolution/(q[2]*q[2]);
  };
@@ -44,7 +49,7 @@ static void glb(const fs::path&path,const std::vector<Vertex>&mesh,const std::ve
  for(size_t seed=0;seed<total;seed++)if(!seen[seed]){
   seen[seed]=1;std::vector<size_t> patch{seed};
   for(size_t head=0;head<patch.size();head++)for(int other:adjacent[patch[head]])if(other>=0&&!seen[other]&&normals[seed].dot(normals[other])>.93&&std::abs(normals[seed].dot(points[other]-points[seed]))<planeTolerance){seen[other]=1;patch.push_back((size_t)other);}
-  if(patch.size()<24)continue;std::vector<size_t> votes(cameras.size());for(auto t:patch)if(labels[t]>=0)votes[labels[t]]++;
+  if(patch.size()<24)continue;std::vector<double> votes(cameras.size());for(auto t:patch)if(labels[t]>=0)votes[labels[t]]+=areas[t];
   int camera=(int)(std::max_element(votes.begin(),votes.end())-votes.begin());if(!votes[camera])continue;
   for(auto t:patch)if(viewScore(t,camera)>=scores[t]*.35&&viewScore(t,camera)>0)labels[t]=camera;
  }
@@ -78,7 +83,7 @@ static void glb(const fs::path&path,const std::vector<Vertex>&mesh,const std::ve
  auto textureIndex=[&](int camera){for(size_t i=0;i<images.size();i++)if(images[i].camera==camera)return (int)i;return -1;};
  float lo[3]={1e30f,1e30f,1e30f},hi[3]={-1e30f,-1e30f,-1e30f};for(auto&v:vertices){float a[]={v.x,v.y,v.z};for(int i=0;i<3;i++){lo[i]=std::min(lo[i],a[i]);hi[i]=std::max(hi[i],a[i]);}}
  std::ostringstream js;js.imbue(std::locale::classic());
- js<<"{\"asset\":{\"version\":\"2.0\",\"generator\":\"Yunsevo reconstruction experimental 0.2\"},\"extensionsUsed\":[\"KHR_materials_unlit\"],\"extras\":{\"backend\":\""<<safe(backend)<<"\",\"photos\":"<<cameras.size()<<",\"registeredCameras\":"<<registered<<",\"appearance\":\"original-photo projection\",\"textureMaxSide\":"<<textureSide<<",\"texturedTriangles\":"<<textured<<",\"scale\":\"relative; not a survey measurement\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[";
+ js<<"{\"asset\":{\"version\":\"2.0\",\"generator\":\"Yunsevo reconstruction experimental 0.3\"},\"extensionsUsed\":[\"KHR_materials_unlit\"],\"extras\":{\"backend\":\""<<safe(backend)<<"\",\"photos\":"<<cameras.size()<<",\"registeredCameras\":"<<registered<<",\"appearance\":\"original-photo projection\",\"textureMaxSide\":"<<textureSide<<",\"texturedTriangles\":"<<textured<<",\"quality\":\""<<(fine?"fine":"quick")<<"\",\"depthSide\":"<<dense<<",\"depthValidation\":\""<<(fine?"round-trip and independently supported planar gaps":"pairwise")<<"\",\"scale\":\"relative; not a survey measurement\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[";
  for(size_t i=0;i<groups.size();i++){if(i)js<<",";js<<"{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,"<<(groups[i].camera<0?"\"COLOR_0\":2":"\"TEXCOORD_0\":3")<<"},\"indices\":"<<4+i<<",\"material\":"<<i<<"}";}js<<"]}],\"materials\":[";
  for(size_t i=0;i<groups.size();i++){if(i)js<<",";js<<"{\"doubleSided\":true,\"extensions\":{\"KHR_materials_unlit\":{}},\"pbrMetallicRoughness\":{\"metallicFactor\":0,\"roughnessFactor\":1";int t=textureIndex(groups[i].camera);if(t>=0)js<<",\"baseColorTexture\":{\"index\":"<<t<<"}";js<<"}}";}
  js<<"],\"samplers\":[{\"magFilter\":9729,\"minFilter\":9987,\"wrapS\":33071,\"wrapT\":33071}],\"textures\":[";

@@ -18,17 +18,25 @@ internal static class ScanVideo
         if (new FileInfo(source).Length > 512L * 1024 * 1024) throw new IOException("视频不能超过 512 MB。");
         var prefix = "frame-" + Path.GetFileNameWithoutExtension(source) + "-";
         if (ScanStore.Files(id).Any(x => Path.GetFileName(x).StartsWith(prefix, StringComparison.Ordinal))) throw new IOException("此视频已选取过照片，请新建扫描后重新选择，避免重复帧影响重建。");
-        var room = 72 - ScanStore.Files(id).Length;
+        var room = ScanStore.MaxPhotos - ScanStore.Files(id).Length;
         if (room < 6) throw new IOException("剩余照片名额不足 6 张，请新建扫描。");
         using var retriever = new MediaMetadataRetriever();
         retriever.SetDataSource(source);
         if (!long.TryParse(retriever.ExtractMetadata(MetadataKey.Duration), out var duration) || duration < 3000 || duration > 180_000)
             throw new IOException("请选择 3 秒至 3 分钟的连续环绕视频，避免快切、变焦和不同物体混在一起。");
+        if (!int.TryParse(retriever.ExtractMetadata(MetadataKey.VideoWidth), out var sourceWidth) ||
+            !int.TryParse(retriever.ExtractMetadata(MetadataKey.VideoHeight), out var sourceHeight) || sourceWidth <= 0 || sourceHeight <= 0)
+            throw new IOException("无法读取视频原始尺寸，源视频已保留。");
+        // Some Android decoders upscale when both requested bounds exceed the
+        // source. A 1080p recording must not become a blurred, larger 4K JPEG.
+        var frameSide = Math.Min(3840, Math.Max(sourceWidth, sourceHeight));
         ScanVideoCalibration? calibration = null;
         if (File.Exists(source + ".calibration.json")) try { calibration = System.Text.Json.JsonSerializer.Deserialize(File.ReadAllText(source + ".calibration.json"), ScanJson.Default.ScanVideoCalibration); } catch (System.Text.Json.JsonException) { }
-        var objectScan = ScanStore.Get(id).Subject == "object";
-        var count = Math.Min(240, Math.Max(12, (int)(duration / 350)));
-        var buckets = Math.Min(Math.Min(room, 48), Math.Max(6, count / 3));
+        var scan = ScanStore.Get(id); var objectScan = scan.Subject == "object";
+        // Fine mode checks denser time windows while preserving source resolution.
+        // A short clip is never padded with duplicate frames to meet a target count.
+        var count = Math.Min(scan.Quality == 1 ? 600 : 240, Math.Max(18, (int)(duration / (scan.Quality == 1 ? 100 : 250))));
+        var buckets = Math.Min(Math.Min(room, scan.Quality == 1 ? 96 : 48), Math.Max(6, count / 3));
         var best = new Candidate?[buckets];
         for (var i = 0; i < count; i++)
         {
@@ -56,7 +64,7 @@ internal static class ScanVideo
             for (var i = 0; i < chosen.Count; i++)
             {
                 token.ThrowIfCancellationRequested(); var candidate = chosen[i];
-                using var bitmap = retriever.GetScaledFrameAtTime(candidate.Time, Option.Closest, 3840, 3840) ?? throw new IOException("无法解码所选视频帧。");
+                using var bitmap = retriever.GetScaledFrameAtTime(candidate.Time, Option.Closest, frameSide, frameSide) ?? throw new IOException("无法解码所选视频帧。");
                 var path = Path.Combine(staging, prefix + candidate.Time.ToString("D12", CultureInfo.InvariantCulture) + ".jpg");
                 using (var output = File.Create(path)) if (!bitmap.Compress(Bitmap.CompressFormat.Jpeg!, 95, output)) throw new IOException("视频帧保存失败。");
                 using (var exif = new ExifInterface(path))

@@ -144,6 +144,7 @@ static std::vector<Track> sfm(std::vector<Camera>&cs,double& f,bool estimateFoca
  return tracks;
 }
 struct Vertex{float x,y,z,nx,ny,nz,r,g,b;};
+#include "depth_refinement.h"
 
 static void fuse(const Vec3d* objectCenter,double objectRadius,const std::vector<Camera>& cameras,const std::vector<Mat>& colors,const std::vector<std::vector<float>>& depths,int side,float f,int quality,std::vector<Vertex>& vertices,std::vector<uint32_t>& indices,Progress report){
  if(vertices.size()<1000)throw std::runtime_error("Too few consistent depth samples");
@@ -153,7 +154,7 @@ static void fuse(const Vec3d* objectCenter,double objectRadius,const std::vector
   size_t a=values.size()/100,b=values.size()*99/100;std::nth_element(values.begin(),values.begin()+a,values.end());lo[axis]=values[a];std::nth_element(values.begin(),values.begin()+b,values.end());hi[axis]=values[b];
  }
  if(objectCenter)for(int a=0;a<3;a++){double sign=a? -1:1;lo[a]=(float)(sign*(*objectCenter)[a]-objectRadius);hi[a]=(float)(sign*(*objectCenter)[a]+objectRadius);}
- const int N=quality?192:144;float step=std::max({hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2]})/(N-10),trunc=step*3.5f;
+ const int N=quality?208:144;float step=std::max({hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2]})/(N-10),trunc=step*3.5f;
  if(!std::isfinite(step)||step<=0)throw std::runtime_error("Invalid reconstruction bounds");
  for(int a=0;a<3;a++)lo[a]-=step*5;
  struct Voxel{float sdf=1,r=0,g=0,b=0;unsigned short weight=0;};std::vector<Voxel> grid((size_t)N*N*N);
@@ -183,8 +184,10 @@ static void fuse(const Vec3d* objectCenter,double objectRadius,const std::vector
  };
  auto tri=[&](uint32_t a,uint32_t b,uint32_t c){const auto&x=vertices[a];const auto&y=vertices[b];const auto&z=vertices[c];Vec3d n=Vec3d(y.x-x.x,y.y-x.y,y.z-x.z).cross(Vec3d(z.x-x.x,z.y-x.y,z.z-x.z));if(cv::norm(n)<step*step*1e-5)return;if(n.dot(Vec3d(x.nx+y.nx+z.nx,x.ny+y.ny+z.ny,x.nz+y.nz+z.nz))<0)std::swap(b,c);indices.insert(indices.end(),{a,b,c});};
  for(int z=0;z<N-1;z++)for(int y=0;y<N-1;y++)for(int x=0;x<N-1;x++){
-  int ids[8];bool valid=true;for(int c=0;c<8;c++){ids[c]=index(x+corners[c][0],y+corners[c][1],z+corners[c][2]);if(grid[ids[c]].weight<2){valid=false;break;}}if(!valid)continue;
-  for(const auto&tet:tets){int in[4],out[4],ni=0,no=0;for(int c:tet){if(grid[ids[c]].sdf<0)in[ni++]=ids[c];else out[no++]=ids[c];}if(ni==0||ni==4)continue;
+  int ids[8];for(int c=0;c<8;c++)ids[c]=index(x+corners[c][0],y+corners[c][1],z+corners[c][2]);
+  // A tetrahedron depends on its four corners, not unrelated corners of its cube.
+  for(const auto&tet:tets){bool valid=true;for(int c:tet)if(grid[ids[c]].weight<2)valid=false;if(!valid)continue;
+   int in[4],out[4],ni=0,no=0;for(int c:tet){if(grid[ids[c]].sdf<0)in[ni++]=ids[c];else out[no++]=ids[c];}if(ni==0||ni==4)continue;
    if(ni==1)tri(vertex(in[0],out[0]),vertex(in[0],out[1]),vertex(in[0],out[2]));
    else if(ni==3)tri(vertex(out[0],in[0]),vertex(out[0],in[1]),vertex(out[0],in[2]));
    else{auto a=vertex(in[0],out[0]),b=vertex(in[0],out[1]),c=vertex(in[1],out[0]),d=vertex(in[1],out[1]);tri(a,b,c);tri(b,d,c);}
@@ -204,13 +207,15 @@ const char* yv_capabilities(){try{VulkanDepth vk;capabilities="{\"cpu\":true,\"v
 int yv_reconstruct(const char*input,const char*output,const char*requested,int quality,YvProgress callback,void*user){return yv_reconstruct_v2(input,output,requested,quality,"object",callback,user);}
 int yv_reconstruct_v2(const char*input,const char*output,const char*requested,int quality,const char*subject,YvProgress callback,void*user){
  errorText.clear();try{
+  if(quality<0||quality>1)throw std::runtime_error("Native quality must be 0 (quick) or 1 (fine)");
   const bool object=subject&&std::string(subject)=="object";if(!subject||(!object&&std::string(subject)!="scene"))throw std::runtime_error("Unsupported scan subject");
   Progress report{callback,user};std::string backend=requested?requested:"auto";if(backend!="auto"&&backend!="cpu"&&backend!="vulkan")throw std::runtime_error("Unsupported compute backend");
   std::unique_ptr<VulkanDepth> gpu;if(backend!="cpu")try{gpu=std::make_unique<VulkanDepth>();}catch(const std::exception&e){if(backend=="vulkan")throw;report(0,std::string("Vulkan unavailable; CPU fallback: ")+e.what());}
   backend=gpu?"vulkan: "+gpu->name():"cpu";report(1,backend);
   std::vector<fs::path> paths;for(auto&it:fs::directory_iterator(fs::u8path(input))){if(!it.is_regular_file())continue;std::string ext=it.path().extension().string();std::transform(ext.begin(),ext.end(),ext.begin(),::tolower);if(ext==".jpg"||ext==".jpeg"||ext==".png")paths.push_back(it.path());}
   std::sort(paths.begin(),paths.end());if(paths.size()<6||paths.size()>120)throw std::runtime_error("Use 6 to 120 photos (24 to 72 recommended)");
-  const int side=1024,dense=quality?384:256;double focal=side*1.1;
+  const int side=1024,dense=quality?448:256;double focal=side*1.1;
+  report(1,quality?"fine local reconstruction: 448px depth, 128 planes, round-trip consistency and supported gaps":"quick local reconstruction");
   std::vector<double> measuredFocal;
   std::vector<Camera> cameras;for(auto&p:paths){
    if(fs::file_size(p)>40*1024*1024)throw std::runtime_error("Photo exceeds 40 MB");
@@ -236,16 +241,17 @@ int yv_reconstruct_v2(const char*input,const char*output,const char*requested,in
     if(common<15)continue;std::nth_element(angle.begin(),angle.begin()+angle.size()/2,angle.end());double degrees=angle[angle.size()/2];if(degrees<1||degrees>35)continue;
     scores.emplace_back(common*std::min(1.,degrees/8)*std::exp(-std::pow((degrees-12)/18,2)),j);
    }
-   std::sort(scores.rbegin(),scores.rend());if(scores.size()<2)continue;for(size_t n=0;n<std::min<size_t>(3,scores.size());n++)neighbors[i].push_back(scores[n].second);
+   std::sort(scores.rbegin(),scores.rend());if(scores.size()<2)continue;for(size_t n=0;n<std::min<size_t>(quality?4:3,scores.size());n++)neighbors[i].push_back(scores[n].second);
    std::vector<double> zs;for(auto&tr:tracks)if(tr.good&&tr.observations.count(i)){Vec3d q=ref.R*Vec3d(tr.point.x,tr.point.y,tr.point.z)+ref.t;if(q[2]>0)zs.push_back(q[2]);}if(zs.size()<20)continue;std::sort(zs.begin(),zs.end());
    if(object){Vec3d q=ref.R*objectCenter+ref.t;zs={std::max(.01,q[2]-objectRadius*1.2),q[2]+objectRadius*1.2};}
-   DepthJob job{dense,dense,quality?96:64,(int)neighbors[i].size(),(float)std::max(.001,zs[zs.size()/20]*(object?1.:.75)),(float)(zs[zs.size()*19/20]*(object?1.:1.25)),f,mid,mid};
+   DepthJob job{dense,dense,quality?128:64,(int)neighbors[i].size(),(float)std::max(.001,zs[zs.size()/20]*(object?1.:.75)),(float)(zs[zs.size()*19/20]*(object?1.:1.25)),f,mid,mid};
    auto append=[&](int n){Mat gray,values;cv::cvtColor(colors[n],gray,cv::COLOR_BGR2GRAY);gray.convertTo(values,CV_32F,1/255.);job.pixels.insert(job.pixels.end(),values.ptr<float>(),values.ptr<float>()+values.total());};append(i);
    for(int j:neighbors[i]){append(j);Matx33d R=cameras[j].R*ref.R.t();Vec3d t=cameras[j].t-R*ref.t;std::array<float,16> tf{};for(int y=0;y<3;y++){for(int x=0;x<3;x++)tf[y*4+x]=(float)R(y,x);tf[y*4+3]=(float)t[y];}job.transforms.push_back(tf);}
    report(42+i*40/(int)cameras.size(),"dense depth "+std::to_string(i+1)+"/"+std::to_string(cameras.size())+" "+backend);
    if(gpu)try{depths[i]=gpu->run(job);}catch(const std::exception&e){if(std::string(requested)=="vulkan")throw;report(42+i*40/(int)cameras.size(),std::string("Vulkan failed; CPU fallback: ")+e.what());gpu.reset();backend="cpu (Vulkan fallback)";depths[i]=cpuDepth(job);}else depths[i]=cpuDepth(job);
   }
   if(object)for(size_t i=0;i<depths.size();i++)if(!depths[i].empty())for(int y=0;y<dense;y++)for(int x=0;x<dense;x++){auto&z=depths[i][y*dense+x];if(z<=0)continue;Vec3d p=cameras[i].R.t()*(Vec3d((x-mid)*z/f,(y-mid)*z/f,z)-cameras[i].t);if(std::abs(p[0]-objectCenter[0])>objectRadius||std::abs(p[1]-objectCenter[1])>objectRadius||std::abs(p[2]-objectCenter[2])>objectRadius)z=0;}
+  if(quality)refineDepths(cameras,depths,neighbors,dense,f,report);
   std::vector<Vertex> vertices;std::vector<uint32_t> indices;
   for(int i=0;i<(int)cameras.size();i++)if(!depths[i].empty()){
    report(83+i*6/(int)cameras.size(),"fusing consistent surfaces");const auto&c=cameras[i];auto&dep=depths[i];std::vector<int> map(dense*dense,-1);

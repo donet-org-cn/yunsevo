@@ -9,13 +9,14 @@ namespace MyPan.Mobile.Android;
 
 internal sealed record ScanSession(Guid Id, string Account, string Name, FolderSelection Folder, DateTimeOffset CreatedUtc,
     string Subject = "object", string State = "collecting", int Progress = 0, string Message = "添加原片或开始引导拍摄", string Backend = "auto",
-    Guid? RemoteJob = null, List<Guid>? UploadJobs = null, Guid? ModelUpload = null, Guid? RemoteRequestId = null, List<string>? Inputs = null, int Quality = 0);
+    Guid? RemoteJob = null, List<Guid>? UploadJobs = null, Guid? ModelUpload = null, Guid? RemoteRequestId = null, List<string>? Inputs = null, int Quality = 1, List<Guid>? SourceVideoJobs = null, Guid? DerivedFrom = null);
 internal sealed record ScanVideoCalibration(double Focal35mm);
 [JsonSerializable(typeof(ScanSession))]
 [JsonSerializable(typeof(ScanVideoCalibration))]
 internal partial class ScanJson : JsonSerializerContext;
 internal static class ScanStore
 {
+    public const int MaxPhotos = 120;
     private static readonly object Gate = new();
     private static string Root => Path.Combine(AppServices.Repository.Home, "scans");
     public static string Home(Guid id) => Path.Combine(Root, id.ToString("N"));
@@ -56,12 +57,45 @@ internal static class ScanStore
         }
     }
     public static string[] Files(Guid id) => Directory.GetFiles(Photos(id)).Where(x => Path.GetExtension(x) is ".jpg" or ".png").OrderBy(x => x, StringComparer.Ordinal).ToArray();
+    // Re-select into a separate revision. Never mix new frames with the old set or
+    // invalidate a usable local / uploaded model if decoding is cancelled or fails.
+    public static (ScanSession Session, string Video) CreateVideoRevision(Guid id, string source, int quality, CancellationToken token)
+    {
+        lock (Gate)
+        {
+            var previous = Get(id);
+            if (previous.State is "running" or "remote" or "staging" or "uploading") throw new InvalidOperationException("请先结束当前任务，再重新选帧。");
+            if (quality is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(quality));
+            source = Path.GetFullPath(source);
+            if (Path.GetDirectoryName(source) != Path.GetFullPath(Home(id)) || !Path.GetFileName(source).StartsWith("video-", StringComparison.Ordinal) || Path.GetExtension(source) != ".mp4" || !File.Exists(source)) throw new IOException("扫描原视频不存在。");
+            if (new FileInfo(source).Length > 512L * 1024 * 1024) throw new IOException("视频不能超过 512 MB。");
+            var revision = new ScanSession(Guid.NewGuid(), previous.Account, previous.Name, previous.Folder, DateTimeOffset.UtcNow,
+                previous.Subject, Message: "原视频已复制，准备重新提取关键照片；旧扫描和旧模型已保留。", Quality: quality, DerivedFrom: id);
+            var home = Home(revision.Id); Directory.CreateDirectory(home);
+            var target = Path.Combine(home, Path.GetFileName(source));
+            try
+            {
+                void Copy(string from, string to, long limit)
+                {
+                    using var input = File.OpenRead(from); using var output = File.Create(to);
+                    var buffer = new byte[128 * 1024]; long total = 0; int count;
+                    while ((count = input.Read(buffer)) > 0) { token.ThrowIfCancellationRequested(); total += count; if (total > limit) throw new IOException("源文件超过限制。"); output.Write(buffer, 0, count); }
+                }
+                Copy(source, target, 512L * 1024 * 1024);
+                if (File.Exists(source + ".calibration.json")) Copy(source + ".calibration.json", target + ".calibration.json", 64 * 1024);
+                token.ThrowIfCancellationRequested();
+                if (AppServices.Client.AccountKey != previous.Account) throw new InvalidOperationException("账号已切换，请重新打开扫描。");
+                Save(revision); return (revision, target);
+            }
+            catch { Directory.Delete(home, true); throw; } // home is a new GUID directory owned by this operation.
+        }
+    }
     public static void AddVideoFrames(Guid id, string[] frames, CancellationToken token)
     {
         lock (Gate)
         {
             EnsureCollecting(id); var existing = Files(id);
-            if (existing.Length + frames.Length > 72 || existing.Concat(frames).Sum(x => new FileInfo(x).Length) > 512L * 1024 * 1024) throw new IOException("选取后超过扫描的 72 张／512 MB 上限。");
+            if (existing.Length + frames.Length > MaxPhotos || existing.Concat(frames).Sum(x => new FileInfo(x).Length) > 512L * 1024 * 1024) throw new IOException("选取后超过扫描的 120 张／512 MB 上限。");
             var moved = new List<string>();
             try
             {
@@ -77,7 +111,7 @@ internal static class ScanStore
     public static void EnsureCollecting(Guid id)
     {
         var session = Get(id); if (session.State is "running" or "remote" or "staging" || session.RemoteJob.HasValue || session.Inputs != null) throw new InvalidOperationException("重建期间不能修改原片，请新建扫描。");
-        var files = Files(id); if (files.Length >= 72 || files.Sum(x => new FileInfo(x).Length) >= 512L * 1024 * 1024) throw new IOException("每次扫描最多 72 张照片、合计 512 MB。");
+        var files = Files(id); if (files.Length >= MaxPhotos || files.Sum(x => new FileInfo(x).Length) >= 512L * 1024 * 1024) throw new IOException("每次扫描最多 120 张照片、合计 512 MB。");
         if (File.Exists(Model(id))) throw new InvalidOperationException("此扫描已生成模型。补拍请新建扫描，以保留原来的模型。");
     }
 }

@@ -170,7 +170,9 @@
     $('preview-title').textContent = entry.path; $('preview-content').replaceChildren(); $('preview-dialog').showModal();
     showOrigin(entry);
     const ext = entry.path.split('.').pop().toLowerCase(), src = (trash ? '/api/trash/' + entry.id + '/preview' : '/api/preview/' + entry.id) + '?version=' + encodeURIComponent(entry.version);
-    if (ext === 'glb') {
+    if (/\.360\.(jpg|jpeg|png)$/i.test(entry.path)) {
+      const frame=document.createElement('iframe');frame.title='全景环视预览';frame.src='/model-viewer/panorama.html?id='+encodeURIComponent(entry.id)+'&version='+encodeURIComponent(entry.version)+(trash?'&trash=1':'');frame.style.cssText='width:100%;height:min(70vh,760px);border:0;border-radius:12px';frame.setAttribute('sandbox','allow-scripts allow-same-origin');frame.allowFullscreen=true;$('preview-content').append(frame);
+    } else if (ext === 'glb') {
       const frame=document.createElement('iframe');frame.title='三维模型预览';frame.src='/model-viewer/index.html?id='+encodeURIComponent(entry.id)+'&version='+encodeURIComponent(entry.version)+(trash?'&trash=1':'');frame.style.cssText='width:100%;height:min(70vh,760px);border:0;border-radius:12px';frame.setAttribute('sandbox','allow-scripts allow-same-origin');$('preview-content').append(frame);
     } else if (['png','jpg','jpeg','gif','webp','bmp','avif'].includes(ext)) {
       const img = document.createElement('img'); img.src = src; img.alt = entry.path; img.addEventListener('error', () => notify('图片无法预览，请检查格式或下载查看。')); $('preview-content').append(img);

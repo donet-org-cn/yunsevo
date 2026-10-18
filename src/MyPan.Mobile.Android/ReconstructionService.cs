@@ -39,7 +39,7 @@ public sealed class ReconstructionService : Service
                 }
                 ReconstructionNative.Generate(id, value.Backend, (_, percent, text) =>
                 {
-                    if (cancel || AppServices.Client.AccountKey != value.Account || System.Environment.TickCount64 - started > 30 * 60 * 1000L) return 1;
+                    if (cancel || AppServices.Client.AccountKey != value.Account || System.Environment.TickCount64 - started > (value.Quality == 1 ? 60 : 30) * 60 * 1000L) return 1;
                     try
                     {
                     if (percent != last && System.Environment.TickCount64 - updated > 500)

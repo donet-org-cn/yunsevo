@@ -33,6 +33,24 @@ int main(){
   if(errors.size()<1200)throw std::runtime_error("Insufficient measured depth coverage on a textured plane");std::sort(errors.begin(),errors.end());if(errors[errors.size()/2]>.04)throw std::runtime_error("Refined CPU depth differs from the known plane");
   std::cout<<"PASS CPU subpixel depth and exposure variation; median error "<<errors[errors.size()/2]<<"\n";
   try{VulkanDepth gpu;auto result=gpu.run(job);std::vector<double> differences;for(int y=12;y<52;y++)for(int x=12;x<52;x++)if(cpu[y*64+x]>0&&result[y*64+x]>0)differences.push_back(std::abs(cpu[y*64+x]-result[y*64+x]));std::sort(differences.begin(),differences.end());if(differences.size()<1200||differences[differences.size()/2]>.01)throw std::runtime_error("CPU/Vulkan refined depth mismatch");std::cout<<"PASS actual Vulkan/CPU depth parity on "<<gpu.name()<<"\n";}catch(const std::runtime_error&e){if(std::string(e.what()).find("No hardware")!=std::string::npos)std::cout<<"SKIP GPU: no hardware queue\n";else throw;}
+  {
+   const int side=32;std::vector<Camera> views(3);std::vector<std::vector<float>> depths(3,std::vector<float>(side*side,3.f));
+   std::vector<std::vector<int>> adjacent{{1,2},{0,2},{0,1}};
+   for(int i=0;i<3;i++){views[i].registered=true;views[i].t=Vec3d((i-1)*.1,0,0);}
+   depths[0][16*side+16]=0; // A small missing measurement, independently observed in two views.
+   depths[0][12*side+12]=8; // A false match must not enter the fusion volume.
+   auto refined=refineDepths(views,depths,adjacent,side,30,Progress{nullptr,nullptr});
+   if(std::abs(depths[0][16*side+16]-3)>.001||refined.filled==0||refined.rejected==0||depths[0][12*side+12]>3.01)throw std::runtime_error("Fine depth consistency / supported planar recovery failed");
+   std::vector<float> boundary(side*side,3);for(int y=0;y<side;y++)for(int x=17;x<side;x++)boundary[y*side+x]=6;boundary[16*side+16]=0;
+   if(smallPlanarGap(boundary,side,16,16)!=0)throw std::runtime_error("Planar completion crossed a depth discontinuity");
+   depths.assign(3,std::vector<float>(side*side,3.f));
+   for(auto&map:depths)for(int y=10;y<22;y++)for(int x=9;x<23;x++)map[y*side+x]=0;
+   refineDepths(views,depths,adjacent,side,30,Progress{nullptr,nullptr});
+   if(depths[0][16*side+16]!=0)throw std::runtime_error("Fine completion invented an unobserved surface");
+   bool stopped=false;try{refineDepths(views,depths,adjacent,side,30,Progress{[](void*,int,const char*){return 1;},nullptr});}catch(const std::runtime_error&e){stopped=std::string(e.what())=="CANCELLED";}
+   if(!stopped)throw std::runtime_error("Fine depth stage ignored cancellation");
+   std::cout<<"PASS fine multi-view outlier filtering and independently supported small gaps\nPASS depth-edge and unobserved-opening preservation\nPASS fine-stage cancellation\n";
+  }
   return 0;
  }catch(const std::exception&e){std::cerr<<e.what()<<"\n";return 1;}
 }
