@@ -1,7 +1,8 @@
 // Run native executables on their matching host, using isolated test data.
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, stat, copyFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { randomBytes, createHash } from 'node:crypto';
 import { createServer } from 'node:net';
 import path from 'node:path';
@@ -13,7 +14,10 @@ const base = path.resolve(published ?? 'artifacts/v2/' + rid);
 const root = path.resolve('.test-data', 'release-' + rid + '-' + Date.now());
 await mkdir(root, { recursive: true });
 const checks = [], extension = rid.startsWith('win-') ? '.exe' : '';
-const executable = role => path.join(base, role.toLowerCase(), 'MyPan.' + role + extension);
+const executable = role => {
+  const bundle = path.join(base, 'desktop', 'MyPan.app', 'Contents', 'MacOS', 'MyPan.Desktop');
+  return role === 'Desktop' && rid.startsWith('osx-') && existsSync(bundle) ? bundle : path.join(base, role.toLowerCase(), 'MyPan.' + role + extension);
+};
 const assert = (condition, name) => { if (!condition) throw new Error(name); checks.push(name); console.log('PASS: ' + name); };
 for (const role of ['Server', 'Desktop', 'Headless']) {
   const bytes = await readFile(executable(role)), arm = rid.endsWith('arm64');
@@ -86,6 +90,7 @@ try {
   const report = { rid, checkedAt: new Date().toISOString(), checks, gui: 'Real native Avalonia login window rendered', sync: 'Native server plus headless and desktop synchronization smoke', placeholders: rid.startsWith('win-') ? 'Not exercised by this CI smoke; separate Windows CFAPI regression required' : 'Not implemented; full local copies', signing: 'No commercial signing or Apple notarization', binaries: {} };
   for (const role of ['Server', 'Desktop', 'Headless']) report.binaries[role] = { bytes: (await stat(executable(role))).size, sha256: createHash('sha256').update(await readFile(executable(role))).digest('hex') };
   await mkdir('artifacts/release', { recursive: true });
+  await copyFile(path.join(desktopHome, 'window.png'), 'artifacts/release/desktop-' + rid + '.png');
   await writeFile('artifacts/release/verification-' + rid + '.json', JSON.stringify(report, null, 2) + '\n');
   console.log('Native smoke passed: ' + checks.length + ' checks on ' + rid);
 } finally {

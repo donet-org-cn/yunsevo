@@ -6,8 +6,8 @@
   <key>CFBundleIdentifier</key><string>com.mypan.desktop</string>
   <key>CFBundleExecutable</key><string>MyPan.Desktop</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>2.6.1</string>
-  <key>CFBundleVersion</key><string>2.6.1</string>
+  <key>CFBundleShortVersionString</key><string>2.6.2</string>
+  <key>CFBundleVersion</key><string>2.6.2</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
 </dict></plist>

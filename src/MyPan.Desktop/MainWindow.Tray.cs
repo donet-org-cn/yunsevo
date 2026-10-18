@@ -8,6 +8,9 @@ internal sealed partial class MainWindow
 {
     private void InitializeTray()
     {
+        // The macOS native tray backend requires a non-null tooltip on attach.
+        tray.ToolTipText = ProductBrand.Desktop + " · 尚未登录";
+        tray.Icon = CloudIcons.Create("signed-out");
         var menu = new NativeMenu();
         void Item(string title, Action action) { var item = new NativeMenuItem(title); item.Click += (_, _) => action(); menu.Add(item); }
         Item("查看同步状态", ToggleTrayHub); Item("打开 " + ProductBrand.Desktop, ShowPanel);
