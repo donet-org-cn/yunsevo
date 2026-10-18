@@ -4,9 +4,9 @@
 
 多文件同步支持受控并发与批次处理；大文件支持分块续传、范围下载和校验，服务端及客户端使用可恢复的增量状态日志。配置、恢复文件及当前边界见[同步性能说明](docs/sync-performance.md)。
 
-Android 手机端 1.3 支持全屏工程相机、拍摄时切换工程、照片/视频水印、EXIF 参数保留，以及仅云端或同时保存本机。云端相册使用服务端小缩略图和滚动续载，支持左右滑动看图、缩放、保存与分享。地址和天气服务在服务端配置。安装包生成于 artifacts/mobile/android-arm64/yunsevo-android-arm64.apk，需配合新版服务端；使用流程、构建、后台限制和签名说明见[手机端说明](docs/mobile.md)。当前为内部测试签名，尚未纳入 v2.6.2 发布包；iPhone 端后续开发。
+Android 手机端 1.3.1 支持全屏工程相机、拍摄时切换工程、照片/视频水印、EXIF 参数保留，以及仅云端或同时保存本机。云端相册使用服务端小缩略图和滚动续载，支持左右滑动看图、缩放、保存与分享。地址和天气服务在服务端配置。安装包生成于 artifacts/mobile/android-arm64/yunsevo-android-arm64.apk，需配合新版服务端；使用流程、构建、后台限制和签名说明见[手机端说明](docs/mobile.md)。当前为内部测试签名，尚未纳入 v2.6.2 发布包；iPhone 端后续开发。
 
-**三维扫描（试验版）**：Android 支持相册选片、引导绕拍、手机 Vulkan／CPU 重建和服务端重建；生成真实 GLB 网格，手机与网页均可旋转和缩放。已经完成 48 张物体照片的 Windows CPU、桌面 Vulkan 与 Adreno 830 Vulkan 验证；真实场景质量仍需继续验收，详见[三维扫描说明](docs/reconstruction.md)。
+**三维扫描（试验版）**：Android 支持相册选片、引导绕拍、环绕录像自动选帧、手机 Vulkan／CPU 重建和服务端重建；生成真实 GLB 网格，手机与网页均可旋转和缩放。已经完成 48 张物体照片的 Windows CPU、桌面 Vulkan 与 Adreno 830 Vulkan 验证；真实场景质量仍需继续验收，详见[三维扫描说明](docs/reconstruction.md)。
 
 商业品牌使用“沄序 · Yunsevo”，桌面客户端为“沄序 Drive”。新版界面、分页、密码重置和回收站来源记录见 [界面与管理说明](docs/design-and-workspace.md)。现有程序文件名、配置和同步根标识保留兼容。
 

@@ -51,3 +51,22 @@ internal sealed class CameraShutter(Context context) : View(context)
     }
     public override bool PerformClick() { base.PerformClick(); return true; }
 }
+
+// Composition guides are preview-only; they are never burnt into reconstruction input.
+internal sealed class ScanGuide(Context context) : View(context)
+{
+    protected override void OnDraw(Canvas canvas)
+    {
+        base.OnDraw(canvas);
+        using var paint = new Paint(PaintFlags.AntiAlias) { Color = Color.Argb(105, 255, 255, 255), StrokeWidth = Resources!.DisplayMetrics!.Density };
+        var top = Height * .17f; var bottom = Height * .73f; var left = Width * .08f; var right = Width * .92f;
+        for (var i = 1; i <= 2; i++)
+        {
+            var x = left + (right - left) * i / 3; var y = top + (bottom - top) * i / 3;
+            canvas.DrawLine(x, top, x, bottom, paint); canvas.DrawLine(left, y, right, y, paint);
+        }
+        paint.Color = Color.Argb(200, 23, 194, 189);
+        var cx = (left + right) / 2; var cy = (top + bottom) / 2;
+        canvas.DrawLine(cx - 12, cy, cx + 12, cy, paint); canvas.DrawLine(cx, cy - 12, cx, cy + 12, paint);
+    }
+}

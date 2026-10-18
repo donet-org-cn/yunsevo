@@ -45,6 +45,24 @@ internal static class ScanStore
         lock (Gate) { var value = Get(id); if (value.State is "running" or "remote" or "staging" or "uploading") throw new InvalidOperationException("请先结束生成或上传任务。"); Directory.Delete(Home(id), true); }
     }
     public static string[] Files(Guid id) => Directory.GetFiles(Photos(id)).Where(x => Path.GetExtension(x) is ".jpg" or ".png").OrderBy(x => x, StringComparer.Ordinal).ToArray();
+    public static void AddVideoFrames(Guid id, string[] frames, CancellationToken token)
+    {
+        lock (Gate)
+        {
+            EnsureCollecting(id); var existing = Files(id);
+            if (existing.Length + frames.Length > 72 || existing.Concat(frames).Sum(x => new FileInfo(x).Length) > 512L * 1024 * 1024) throw new IOException("选取后超过扫描的 72 张／512 MB 上限。");
+            var moved = new List<string>();
+            try
+            {
+                foreach (var file in frames)
+                {
+                    token.ThrowIfCancellationRequested(); var target = Path.Combine(Photos(id), Path.GetFileName(file));
+                    File.Move(file, target); moved.Add(target);
+                }
+            }
+            catch { foreach (var file in moved) File.Delete(file); throw; }
+        }
+    }
     public static void EnsureCollecting(Guid id)
     {
         var session = Get(id); if (session.State is "running" or "remote" or "staging" || session.RemoteJob.HasValue || session.Inputs != null) throw new InvalidOperationException("重建期间不能修改原片，请新建扫描。");

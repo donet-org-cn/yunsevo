@@ -24,6 +24,7 @@ public sealed class ScanActivity : Activity
     {
         base.OnCreate(state); if (AppServices.Client.Account == null) { Finish(); return; }
         if (Guid.TryParse(state?.GetString("selected"), out var id)) selected = id;
+        if (Guid.TryParse(state?.GetString("importing"), out var pending)) importing = pending;
         var scroll = new ScrollView(this); scroll.SetFitsSystemWindows(true); body = Ui.Column(this); scroll.AddView(body); SetContentView(scroll);
         _ = Task.Run(ReconstructionNative.Capabilities).ContinueWith(t => RunOnUiThread(() => { if (!IsDestroyed && t.IsCompletedSuccessfully) { caps = t.Result; Render(); } }));
     }
@@ -32,7 +33,7 @@ public sealed class ScanActivity : Activity
         if (!busy) foreach (var scan in ScanStore.List().Where(x => x.State == "staging")) ScanStore.Edit(scan.Id, x => x with { State = "failed", Message = "原片准备已中断，可继续提交，已经入队的文件会保留。" });
         Render(); timer.PostDelayed(Tick, 1200); }
     protected override void OnPause() { timer.RemoveCallbacksAndMessages(null); base.OnPause(); }
-    protected override void OnSaveInstanceState(Bundle state) { state.PutString("selected", selected?.ToString()); base.OnSaveInstanceState(state); }
+    protected override void OnSaveInstanceState(Bundle state) { state.PutString("selected", selected?.ToString()); state.PutString("importing", importing?.ToString()); base.OnSaveInstanceState(state); }
     protected override void OnDestroy() { stop.Cancel(); timer.Dispose(); stop.Dispose(); base.OnDestroy(); }
     private void Tick()
     {
@@ -81,6 +82,12 @@ public sealed class ScanActivity : Activity
         {
             body.AddView(Ui.Text(this, "绕物体慢走，保持同一镜头和方向，每移动约 10–15° 拍一张。先平视一圈，再略高／略低补拍；建议 36–72 张、相邻画面重叠约 70%。物体和光照保持不动。", 14));
             body.AddView(Ui.Button(this, "引导拍摄 · 无水印原片", () => Camera(scan.Id)));
+            body.AddView(Ui.Button(this, "环绕录像 · 自动选帧", () => Camera(scan.Id, true), false));
+            body.AddView(Ui.Button(this, "从视频自动选帧", () => { if (busy) return; importing = scan.Id; StartActivityForResult(new Intent(Intent.ActionOpenDocument).AddCategory(Intent.CategoryOpenable)!.SetType("video/*"), 974); }, false));
+            foreach (var video in Directory.GetFiles(ScanStore.Home(scan.Id), "video-*.mp4"))
+            {
+                var copy = video; body.AddView(Ui.Button(this, "重新选帧 · " + Path.GetFileName(video)[..14], () => _ = Run(() => ExtractVideo(scan.Id, copy)), false));
+            }
             body.AddView(Ui.Button(this, "从系统相册添加照片", () => { if (busy) return; importing = scan.Id; StartActivityForResult(new Intent(Intent.ActionOpenDocument).AddCategory(Intent.CategoryOpenable)!.SetType("image/*")!.PutExtra(Intent.ExtraAllowMultiple, true), 971); }, false));
             if (files.Length >= 6)
             {
@@ -92,7 +99,7 @@ public sealed class ScanActivity : Activity
         if (!working) body.AddView(Ui.Button(this, "清理本机扫描", () =>
         {
             if (busy) return;
-            new AlertDialog.Builder(this)!.SetTitle("清理本机扫描？")!.SetMessage("将删除此扫描的本机原片、模型与记录。云端文件和已经加入传输队列的文件会保留；未上传的本机原片和模型将无法恢复。")!.SetPositiveButton("清理本机", (_, _) => { ScanStore.Delete(scan.Id); selected = null; Render(); })!.SetNegativeButton("取消", (_, _) => { })!.Show();
+            new AlertDialog.Builder(this)!.SetTitle("清理本机扫描？")!.SetMessage("将删除此扫描的本机原片、源视频、模型与记录。云端文件和已经加入传输队列的文件会保留；未上传的本机原片和模型将无法恢复。")!.SetPositiveButton("清理本机", (_, _) => { ScanStore.Delete(scan.Id); selected = null; Render(); })!.SetNegativeButton("取消", (_, _) => { })!.Show();
         }, false));
         if (scan.State == "running") body.AddView(Ui.Button(this, "停止本机生成", () => StartService(new Intent(this, typeof(ReconstructionService)).SetAction("cancel")), false));
         if (scan.State == "remote") body.AddView(Ui.Button(this, "取消服务端任务", () => _ = Run(async () => { using var r = await AppServices.Client.Connection!.Http.DeleteAsync("api/reconstruction/jobs/" + scan.RemoteJob, stop.Token); await CloudConnection.Check(r, stop.Token); await Poll(scan); Render(); }), false));
@@ -148,14 +155,14 @@ public sealed class ScanActivity : Activity
             catch (Exception ex) { Ui.Alert(this, "名称无效", ex.Message); }
         };
     }
-    private void Camera(Guid id)
+    private void Camera(Guid id, bool video = false)
     {
         if (busy) return;
-        if (CheckSelfPermission(global::Android.Manifest.Permission.Camera) != Permission.Granted) { selected = id; RequestPermissions([global::Android.Manifest.Permission.Camera], 972); return; }
-        StartActivity(new Intent(this, typeof(CameraActivity)).PutExtra("scan", id.ToString()));
+        if (CheckSelfPermission(global::Android.Manifest.Permission.Camera) != Permission.Granted) { selected = id; importing = video ? id : null; RequestPermissions([global::Android.Manifest.Permission.Camera], 972); return; }
+        importing = id; StartActivityForResult(new Intent(this, typeof(CameraActivity)).PutExtra("scan", id.ToString()).PutExtra("scanVideo", video), 975);
     }
     public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
-    { base.OnRequestPermissionsResult(requestCode, permissions, grantResults); if (requestCode == 972 && grantResults.Length > 0 && grantResults[0] == Permission.Granted && selected.HasValue) Camera(selected.Value); }
+    { base.OnRequestPermissionsResult(requestCode, permissions, grantResults); if (requestCode == 972 && grantResults.Length > 0 && grantResults[0] == Permission.Granted && selected.HasValue) Camera(selected.Value, importing.HasValue); }
     private void PickBackend(Guid id)
     {
         if (busy) return;
@@ -174,7 +181,37 @@ public sealed class ScanActivity : Activity
     }
     protected override async void OnActivityResult(int requestCode, Result resultCode, Intent? data)
     {
-        base.OnActivityResult(requestCode, resultCode, data); if (requestCode != 971 || resultCode != Result.Ok || !importing.HasValue || data == null) return;
+        base.OnActivityResult(requestCode, resultCode, data);
+        if (requestCode is 974 or 975 && resultCode == Result.Ok && importing.HasValue && data != null)
+        {
+            var target = importing.Value;
+            await Run(async () =>
+            {
+                if (requestCode == 975)
+                {
+                    var name = data.GetStringExtra("scanVideo") ?? throw new IOException("没有录像文件。");
+                    if (Path.GetFileName(name) != name || !name.StartsWith("video-", StringComparison.Ordinal) || !name.EndsWith(".mp4", StringComparison.Ordinal)) throw new IOException("录像路径无效。");
+                    await ExtractVideo(target, Path.Combine(ScanStore.Home(target), name));
+                }
+                else if (data.Data is { } uri)
+                {
+                    ScanStore.EnsureCollecting(target);
+                    var path = Path.Combine(ScanStore.Home(target), "video-" + Guid.NewGuid().ToString("N") + ".mp4");
+                    try
+                    {
+                        await using var source = ContentResolver!.OpenInputStream(uri) ?? throw new IOException("视频不可读。");
+                        await using (var output = File.Create(path + ".partial"))
+                        {
+                            var buffer = new byte[65536]; long size = 0; int n;
+                            while ((n = await source.ReadAsync(buffer, stop.Token)) > 0) { size += n; if (size > 512L * 1024 * 1024) throw new IOException("视频不能超过 512 MB。"); await output.WriteAsync(buffer.AsMemory(0, n), stop.Token); }
+                        }
+                        File.Move(path + ".partial", path); await ExtractVideo(target, path);
+                    }
+                    finally { if (File.Exists(path + ".partial")) File.Delete(path + ".partial"); }
+                }
+            }); return;
+        }
+        if (requestCode != 971 || resultCode != Result.Ok || !importing.HasValue || data == null) return;
         var id = importing.Value; await Run(async () =>
         {
             var uris = new List<global::Android.Net.Uri>(); if (data.ClipData != null) for (var i = 0; i < data.ClipData.ItemCount; i++) { var uri = data.ClipData.GetItemAt(i)?.Uri; if (uri != null) uris.Add(uri); } else if (data.Data != null) uris.Add(data.Data);
@@ -199,6 +236,20 @@ public sealed class ScanActivity : Activity
             }
             ScanStore.Edit(id, x => x with { Message = "已添加 " + added + " 张原片。请按拍摄顺序选择，避免不同物体混在一起。" }); Render();
         });
+    }
+    private async Task ExtractVideo(Guid id, string path)
+    {
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
+        var progress = Ui.Text(this, "正在检查视频…", 15); progress.SetPadding(Ui.Dp(this, 22), Ui.Dp(this, 20), Ui.Dp(this, 22), Ui.Dp(this, 20));
+        var dialog = new AlertDialog.Builder(this)!.SetTitle("自动筛选重建照片")!.SetView(progress)!.SetNegativeButton("停止选帧", (_, _) => cancel.Cancel())!.Create()!;
+        dialog.SetCanceledOnTouchOutside(false); dialog.CancelEvent += (_, _) => cancel.Cancel(); dialog.Show();
+        try
+        {
+            var summary = await Task.Run(() => ScanVideo.Extract(id, path, text => RunOnUiThread(() => { if (!IsDestroyed) progress.Text = text; }), cancel.Token));
+            ScanStore.Edit(id, x => x with { Message = summary });
+        }
+        catch (OperationCanceledException) { if (!stop.IsCancellationRequested) ScanStore.Edit(id, x => x with { Message = "已停止选帧，视频和原有照片已保留。" }); }
+        finally { if (!IsDestroyed) { dialog.Dismiss(); Render(); } }
     }
     private async Task<List<ReconstructionJob>> RemoteJobs()
     { using var r = await AppServices.Client.Connection!.Http.GetAsync("api/reconstruction/jobs", stop.Token); await CloudConnection.Check(r, stop.Token); return await r.Content.ReadFromJsonAsync(ApiJson.Default.ListReconstructionJob, stop.Token) ?? []; }

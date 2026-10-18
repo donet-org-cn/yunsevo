@@ -42,7 +42,7 @@ public sealed partial class CameraActivity
             RequestedOrientation = ScreenOrientation.Locked;
             videoContext = ContextForCapture();
             var metadata = Metadata(videoContext);
-            movieOutput = AppServices.Client.PrepareCameraPhoto("YNS_" + videoContext.Time.ToLocalTime().ToString("yyyyMMdd_HHmmss") + ".mp4", videoContext.Project, metadata);
+            movieOutput = scanVideo ? Path.Combine(ScanStore.Home(scanId!.Value), "video-" + videoContext.Id.ToString("N") + ".mp4") : AppServices.Client.PrepareCameraPhoto("YNS_" + videoContext.Time.ToLocalTime().ToString("yyyyMMdd_HHmmss") + ".mp4", videoContext.Project, metadata);
             var landscape = texture.Width > texture.Height; var width = landscape ? 1280 : 720; var height = landscape ? 720 : 1280;
             if (OperatingSystem.IsAndroidVersionAtLeast(31)) movie = new(this);
             else
@@ -52,7 +52,7 @@ public sealed partial class CameraActivity
 #pragma warning restore CS0618, CA1422
             }
             var recorder = movie;
-            recorder.Info += (_, args) => { if (args.What == MediaRecorderInfo.MaxFilesizeReached) RunOnUiThread(() => _ = StopVideo()); };
+            recorder.Info += (_, args) => { if (args.What == MediaRecorderInfo.MaxFilesizeReached || args.What == MediaRecorderInfo.MaxDurationReached) RunOnUiThread(() => _ = StopVideo()); };
             recorder.Error += (_, _) => RunOnUiThread(() => _ = StopVideo());
             await Task.Run(() =>
             {
@@ -60,13 +60,14 @@ public sealed partial class CameraActivity
                 recorder.SetVideoSource(VideoSource.Surface); recorder.SetOutputFormat(OutputFormat.Mpeg4);
                 recorder.SetVideoEncoder(VideoEncoder.H264); recorder.SetVideoSize(width, height); recorder.SetVideoFrameRate(30); recorder.SetVideoEncodingBitRate(6_000_000);
                 if (options.RecordAudio) { recorder.SetAudioEncoder(AudioEncoder.Aac); recorder.SetAudioEncodingBitRate(128_000); recorder.SetAudioSamplingRate(44_100); }
-                recorder.SetMaxFileSize(Math.Min(available, 20L * 1024 * 1024 * 1024));
+                if (scanVideo) recorder.SetMaxDuration(90_000);
+                recorder.SetMaxFileSize(Math.Min(available, scanVideo ? 512L * 1024 * 1024 : 20L * 1024 * 1024 * 1024));
                 recorder.SetOutputFile(movieOutput + ".partial"); recorder.Prepare(); recorder.Start();
             });
             movieSurface = recorder.Surface ?? throw new IOException("无法获取视频编码输出。");
             await gl!.AttachEncoder(movieSurface, width, height);
             recording = true; videoBegan = SystemClock.ElapsedRealtime(); UpdatePreview();
-            message.Text = options.RecordAudio ? "● 录像中 · 松开结束" : "● 无声录像中 · 松开结束";
+            message.Text = scanVideo ? "● 环绕录像中 · 再次点击结束" : options.RecordAudio ? "● 录像中 · 松开结束" : "● 无声录像中 · 松开结束";
             Window!.AddFlags(WindowManagerFlags.KeepScreenOn);
         }
         catch (Exception ex)
@@ -87,7 +88,7 @@ public sealed partial class CameraActivity
             if (videoStarting && videoPreparation != null) await videoPreparation;
             if (movie == null || videoContext == null || movieOutput == null) return;
             var elapsed = SystemClock.ElapsedRealtime() - videoBegan;
-            recording = false; message.Text = "正在保存水印视频…";
+            recording = false; message.Text = scanVideo ? "正在保存环绕视频…" : "正在保存水印视频…";
             // Detach on the GL thread before stopping the consumer; the MP4 already contains the watermark.
             if (gl != null) await gl.DetachEncoder();
             var recorder = movie;
@@ -102,6 +103,11 @@ public sealed partial class CameraActivity
                 if (duration > elapsed + Math.Max(3000, elapsed / 10)) throw new IOException("视频时间轴异常，录制文件已保留，请重试。");
             }
             File.Move(partial, movieOutput, true);
+            if (scanVideo)
+            {
+                SetResult(global::Android.App.Result.Ok, new global::Android.Content.Intent().PutExtra("scanVideo", Path.GetFileName(movieOutput)));
+                Finish(); return;
+            }
             string? galleryError = null;
             if (videoContext.Options.SaveCameraToGallery)
             {

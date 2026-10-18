@@ -96,3 +96,11 @@
 ![服务端三维任务](screenshots/server-reconstruction.png)
 
 ![服务端模型查看](screenshots/server-model.png)
+
+### 环绕视频采集与选帧（Android 1.3.1）
+
+下图来自隔离模拟器。视频由同一组合成物体视图编码，选取 41 张照片后另行完成 Vulkan 重建；相机画面为模拟器测试场景，不能代表手机实拍质量。网格仅用于构图，不写入视频。
+
+![视频自动选帧](screenshots/mobile-3d-video.png)
+
+![环绕录像与取景辅助线](screenshots/mobile-3d-video-capture.png)

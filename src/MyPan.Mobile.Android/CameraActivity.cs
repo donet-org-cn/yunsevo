@@ -30,6 +30,7 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
     private Surface? surface;
     private bool opened, capturing, flash, front;
     private Guid? scanId;
+    private bool scanVideo;
     private CameraGlPipe? gl;
     private Task cameraCleanup = Task.CompletedTask;
     private Rect activeArray = new(0, 0, 1, 1);
@@ -53,7 +54,8 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
         var client = AppServices.Client;
         if (Guid.TryParse(Intent?.GetStringExtra("scan"), out var scan)) scanId = scan;
         if (client.Account == null || !scanId.HasValue && client.Options.Project == null) { Finish(); return; }
-        options = client.Options; if (scanId.HasValue) { var scanning = ScanStore.Get(scanId.Value); ScanStore.EnsureCollecting(scanId.Value); options = options with { Project = scanning.Folder, IncludeLocation = false, IncludeAddress = false, IncludeWeather = false }; }
+        scanVideo = scanId.HasValue && Intent?.GetBooleanExtra("scanVideo", false) == true;
+        options = client.Options; if (scanId.HasValue) { var scanning = ScanStore.Get(scanId.Value); ScanStore.EnsureCollecting(scanId.Value); options = options with { Project = scanning.Folder, IncludeLocation = false, IncludeAddress = false, IncludeWeather = false, RecordAudio = false, SaveCameraToGallery = false }; }
         project = options.Project!; account = client.AccountKey; photographer = client.Account.Login.User.DisplayName;
         BuildCameraUi();
         UpdateOverlay();
@@ -113,7 +115,8 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
         if (shutterView != null) shutterView.Recording = recording || videoStarting;
         gl?.Watermark(scanId.HasValue ? "" : ContextForCapture().Watermark, options);
         if (scanId.HasValue) { var guidance = ScanGuidance(); if (message.Text != guidance) message.Text = guidance; }
-        if (recording) message.Text = "● 录像中 " + TimeSpan.FromMilliseconds(SystemClock.ElapsedRealtime() - videoBegan).ToString(@"mm\:ss") + " · 松开结束";
+        if (recording && scanVideo && SystemClock.ElapsedRealtime() - videoBegan >= 90_000) _ = StopVideo();
+        if (recording) message.Text = (scanVideo ? "● 绕物体慢走 · " : "● 录像中 ") + TimeSpan.FromMilliseconds(SystemClock.ElapsedRealtime() - videoBegan).ToString(@"mm\:ss") + (scanVideo ? " · 再点结束" : " · 松开结束");
         message.PostDelayed(UpdateOverlay, 1000);
     }
     private async void OpenCamera()
@@ -267,6 +270,7 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
     private string ScanGuidance()
     {
         var count = scanId.HasValue ? ScanStore.Files(scanId.Value).Length : 0;
+        if (scanVideo) return "点击开始／结束 · 移动绕拍，别原地转手机 · 最长 90 秒";
         return count + " 张 · " + (count < 24 ? "平视绕拍一圈" : count < 48 ? "略高角度补拍一圈" : "略低角度补拍") + " · 建议步骤，不代表已验证覆盖";
     }
     private void CloseCamera()

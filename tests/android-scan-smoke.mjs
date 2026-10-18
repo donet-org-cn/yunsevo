@@ -44,7 +44,7 @@ async function waitNode(text, timeout = 30000) {
   }
   throw new Error('Missing Android UI: ' + text);
 }
-async function click(text) { const node = await waitNode(text); await adb('shell', 'input', 'tap', String(Math.round(node.x)), String(Math.round(node.y))); await delay(250); }
+async function click(text) { let node = (await nodes()).find(x => x.text === text || x['content-desc'] === text); for(let i=0; !node && i<4; i++){await adb('shell','input','swipe','500','1500','500','500','300');node=(await nodes()).find(x=>x.text===text||x['content-desc']===text);} node ??= await waitNode(text); await adb('shell', 'input', 'tap', String(Math.round(node.x)), String(Math.round(node.y))); await delay(250); }
 async function cameraProject(title) {
   for(let attempt=0;attempt<4;attempt++){
     await click('切换工程');
@@ -102,6 +102,40 @@ try {
  await adb('shell','monkey','-p','app.yunsevo.drive','-c','android.intent.category.LAUNCHER','1');
  await waitNode('登录');await input('服务器地址',url,12);await input('用户名','scanner');await input('密码',password);await adb('shell','input','keyevent','4');await click('登录');await waitNode('我的文件');assert(true,'Release Mono AOT Android app logs in');
  await click('工程拍照');await click('三维扫描 · 拍摄或从相册创建');await waitNode('新建扫描');await until(async()=>(await nodes()).some(x=>x.text?.includes('本机 CPU 可用')),'native CPU capability detection');assert(true,'Android x64 package loads real native CPU engine and rejects software Vulkan as a GPU');
+ if(process.env.MYPAN_TEST_VIDEO==='true') {
+  const ffmpeg=process.env.MYPAN_FFMPEG??'ffmpeg';
+  await command(ffmpeg,['-hide_banner','-loglevel','error','-y','-framerate','1','-i',path.resolve('.test-data/reconstruction/synthetic48/view-%03d.jpg'),'-vf','fps=12','-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p',path.resolve('.test-data/reconstruction/orbit-video.mp4')],120000);
+  await command(ffmpeg,['-hide_banner','-loglevel','error','-y','-loop','1','-i',path.resolve('.test-data/reconstruction/synthetic48/view-000.jpg'),'-t','8','-r','12','-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p',path.resolve('.test-data/reconstruction/static-video.mp4')],120000);
+
+  for(const name of ['orbit-video.mp4','static-video.mp4']) {
+   await adb('push',path.resolve('.test-data/reconstruction',name),'/sdcard/Download/'+name);
+   await adb('shell','am','broadcast','-a','android.intent.action.MEDIA_SCANNER_SCAN_FILE','-d','file:///sdcard/Download/'+name);
+  }
+  await click('新建扫描');await input('例如：水泵设备扫描','VideoScan');await click('创建');
+  async function pickVideo(name) {
+   await click('从视频自动选帧');
+   await delay(1200);
+   if(!(await nodes()).some(x=>x.text===name)) {
+    const roots=(await nodes()).find(x=>x['content-desc']==='Show roots');
+    if(roots){await adb('shell','input','tap',String(Math.round(roots.x)),String(Math.round(roots.y)));await click('Downloads');}
+   }
+   await click(name);
+  }
+  await pickVideo('orbit-video.mp4');
+  await until(async()=>(await nodes()).some(x=>x.text?.includes('已从视频筛选')),'time-distributed keyframe extraction',90000);
+  const countText=(await nodes()).find(x=>x.text?.match(/^\d+\/72 张/))?.text??'';
+  const count=Number(countText.split('/')[0]);assert(count>=6&&count<=48,'Video decoding selects a bounded set of clear time-distributed JPEG frames');
+  await screenshot('mobile-3d-video');
+  await pickVideo('static-video.mp4');await waitNode('暂未完成');
+  assert((await nodes()).some(x=>x.text?.includes('未添加照片')),'Stationary video is rejected without adding duplicate frames');await click('知道了');
+  assert((await nodes()).some(x=>x.text===countText),'Rejected extraction preserves the existing scan photographs');
+  await click('环绕录像 · 自动选帧');await waitNode('三维采集 · 完成');await delay(1200);
+  await click('拍摄，点击拍照，长按录像');await delay(5000);await screenshot('mobile-3d-video-capture');await click('拍摄，点击拍照，长按录像');
+  await until(async()=>(await nodes()).some(x=>x.text==='暂未完成'||x.text?.includes('已从视频筛选')),'scan recording and automatic extraction',90000);
+  const ns=await nodes();assert(!ns.some(x=>x.text?.includes('时间轴异常')||x.text?.includes('录像未开始')),'Tap-to-record scan video stops with a valid timeline and enters automatic frame extraction');
+  if(ns.some(x=>x.text==='暂未完成'))await click('知道了');
+  await click('‹ 所有扫描');
+ }
  await click('新建扫描');await input('例如：水泵设备扫描','PumpScan');await click('创建');await waitNode('引导拍摄 · 无水印原片');assert(true,'Scan creation binds an authorized cloud folder');await screenshot('mobile-3d-scan');
  await click('引导拍摄 · 无水印原片');await waitNode('三维采集 · 完成');await delay(1500);await screenshot('mobile-3d-capture');
  for(let i=1;i<=6;i++){await click('拍摄，点击拍照，长按录像');await until(async()=>(await nodes()).some(x=>x.text?.startsWith(i+' 张 ·')),'original capture '+i,20000);}
