@@ -15,7 +15,8 @@ namespace MyPan.Mobile.Android;
 [IntentFilter([Intent.ActionSend, Intent.ActionSendMultiple], Categories = [Intent.CategoryDefault], DataMimeType = "*/*")]
 public sealed partial class MainActivity : Activity
 {
-    private readonly CancellationTokenSource stop = new();
+    private CancellationTokenSource stop = new();
+    private int requestEpoch;
     private LinearLayout root = null!, content = null!;
     private TextView status = null!;
     private FrameLayout workspaceBody = null!;
@@ -45,12 +46,12 @@ public sealed partial class MainActivity : Activity
     private async Task Run(Func<Task> operation)
     {
         if (busy) return;
-        busy = true;
+        busy = true; var epoch = requestEpoch;
         try { await operation(); }
         catch (OperationCanceledException) { }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized) { ShowLogin("登录已失效，请重新登录原账号；待上传文件已保留。"); }
-        catch (Exception ex) { if (!IsFinishing) Ui.Alert(this, "操作未完成", ex.Message); }
-        finally { busy = false; }
+        catch (HttpRequestException ex) when (epoch == requestEpoch && ex.StatusCode == System.Net.HttpStatusCode.Unauthorized) { ShowLogin("登录已失效，请重新登录原账号；待上传文件已保留。"); }
+        catch (Exception ex) { if (epoch == requestEpoch && !IsFinishing) Ui.Alert(this, "操作未完成", ex.Message); }
+        finally { if (epoch == requestEpoch) busy = false; }
     }
     private void ShowLogin(string? error = null)
     {
@@ -60,9 +61,9 @@ public sealed partial class MainActivity : Activity
         body.AddView(Ui.Text(this, "沄序", 34, true));
         body.AddView(Ui.Text(this, "文件有序，现场记录从容", 17));
         var intro = Ui.Text(this, "工程水印拍照 · 相册自动备份 · 文件随身可用", 14); intro.SetTextColor(Ui.Muted); body.AddView(intro);
-        var address = Ui.Input(this, "服务器地址（HTTPS）", Client.Account?.Server ?? "https://");
+        var address = Ui.Input(this, "服务器地址（HTTPS / 局域网 HTTP）", Client.Account?.Server ?? Intent?.GetStringExtra("server") ?? "https://");
         address.ContentDescription = "服务器地址"; body.AddView(address);
-        var username = Ui.Input(this, "用户名", Client.Account?.Login.User.Username); username.ContentDescription = "用户名"; body.AddView(username);
+        var username = Ui.Input(this, "用户名", Client.Account?.Login.User.Username ?? Intent?.GetStringExtra("username")); username.ContentDescription = "用户名"; body.AddView(username);
         var password = Ui.Input(this, "密码", password: true); password.ContentDescription = "密码"; body.AddView(password);
         var message = Ui.Text(this, error ?? "登录后自动记住此设备，无需每次输入密码。", 13); body.AddView(message);
         Button? submit = null;
@@ -80,6 +81,7 @@ public sealed partial class MainActivity : Activity
         }));
         body.AddView(submit);
         if (ShareInbox.Read().Count > 0) body.AddView(Ui.Text(this, "已接收 " + ShareInbox.Read().Count + " 个分享文件，登录后选择保存目录。", 14));
+        body.AddView(Ui.Button(this, "关闭应用", CloseApplication, false));
         var scroll = new ScrollView(this) { FillViewport = true }; scroll.SetFitsSystemWindows(true); scroll.AddView(body); SetContentView(scroll);
     }
     private void ShowWorkspace()
@@ -99,7 +101,7 @@ public sealed partial class MainActivity : Activity
             var button = new Button(this) { Text = title, TextSize = 12 }; button.SetAllCaps(false);
             button.SetTextColor(key == tab ? Ui.Teal : Ui.Muted); button.SetBackgroundColor(global::Android.Graphics.Color.Transparent);
             button.LayoutParameters = new LinearLayout.LayoutParams(0, Ui.Dp(this, 58), 1);
-            button.Click += (_, _) => { if (key != "backup") ClearAlbumImages(); tab = key; ShowWorkspace(); _ = Run(RenderTab); };
+            button.Click += (_, _) => { CancelPageRequests(); if (key != "backup") ClearAlbumImages(); tab = key; ShowWorkspace(); _ = Run(RenderTab); };
             navigation.AddView(button);
         }
         root.AddView(navigation); SetContentView(root);
@@ -122,6 +124,7 @@ public sealed partial class MainActivity : Activity
     }
     private async Task RenderFiles()
     {
+        var epoch = requestEpoch;
         content.RemoveAllViews();
         if (ShareInbox.Read().Count > 0) content.AddView(Ui.Button(this, "收到 " + ShareInbox.Read().Count + " 个文件 · 选择保存目录", () => _ = Run(SaveInbox)));
         content.AddView(Ui.Text(this, folder.Length == 0 ? "我的文件" : Ui.PathLabel(folder), 23, true));
@@ -130,7 +133,7 @@ public sealed partial class MainActivity : Activity
         search.EditorAction += (_, _) => { query = search.Text!.Trim(); page = 1; _ = Run(RenderFiles); }; content.AddView(search);
         if (folder.Length == 0 && query.Length == 0)
         {
-            var folders = await Client.Folders(stop.Token);
+            var folders = await Client.Folders(stop.Token); if (epoch != requestEpoch) return;
             var roots = folders.Where(x => (x.Access & 1) != 0).Where(x => !folders.Any(p => p.Id != x.Id && (p.Access & 1) != 0 && CloudPath.IsUnder(x.Path, p.Path))).ToList();
             foreach (var item in roots)
                 AddRow("▣  " + Ui.PathLabel(item.Path), Ui.Category(item.Category) + ((item.Access & 2) != 0 ? " · 可读写" : " · 只读"),
@@ -140,7 +143,7 @@ public sealed partial class MainActivity : Activity
         else
         {
             content.AddView(Ui.Button(this, "返回上级", () => { folder = CloudPath.Parent(folder) ?? ""; query = ""; page = 1; _ = Run(RenderFiles); }, false));
-            var result = await Client.Browse(folder, page, query, stop.Token);
+            var result = await Client.Browse(folder, page, query, stop.Token); if (epoch != requestEpoch) return;
             foreach (var row in result.Items)
             {
                 var file = row.Entry;
@@ -276,8 +279,30 @@ public sealed partial class MainActivity : Activity
         content.AddView(Ui.Button(this, "系统权限与后台设置", () => StartActivity(new Intent(global::Android.Provider.Settings.ActionApplicationDetailsSettings,
             global::Android.Net.Uri.Parse("package:" + PackageName))), false));
         content.AddView(Ui.Button(this, "查看接收的分享文件", () => _ = Run(SaveInbox), false));
-        content.AddView(Ui.Button(this, "退出登录", () => _ = Run(async () => { await Client.Logout(stop.Token); AppServices.Schedule(); ShowLogin(); }), false));
+        content.AddView(Ui.Button(this, "退出登录", () => _ = SignOut(), false));
+        content.AddView(Ui.Button(this, "关闭应用", CloseApplication, false));
+        content.AddView(Ui.Text(this, "关闭界面后，已启用的后台备份仍可继续。退出登录会停止此账号的同步，待上传文件会保留。", 12));
         return Task.CompletedTask;
+    }
+    private void CancelPageRequests()
+    {
+        requestEpoch++; var previous = stop; stop = new(); busy = false;
+        previous.Cancel(); previous.Dispose();
+    }
+    private async Task SignOut()
+    {
+        CancelPageRequests(); ClearAlbumImages();
+        try
+        {
+            var revoke = Client.Logout(CancellationToken.None);
+            if (Client.Account != null) { await revoke; return; }
+            AppServices.Schedule(); ShowLogin(); await revoke;
+        }
+        catch (Exception ex) { if (!IsFinishing) Ui.Alert(this, "退出登录未完成", ex.Message); }
+    }
+    private void CloseApplication()
+    {
+        CancelPageRequests(); ClearAlbumImages(); FinishAndRemoveTask();
     }
     private void Toggle(string title, bool selected, Action<bool> change)
     {

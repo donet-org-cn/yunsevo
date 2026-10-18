@@ -43,7 +43,9 @@ public sealed partial class CameraActivity
             videoContext = ContextForCapture();
             var metadata = Metadata(videoContext);
             movieOutput = scanVideo ? Path.Combine(ScanStore.Home(scanId!.Value), "video-" + videoContext.Id.ToString("N") + ".mp4") : AppServices.Client.PrepareCameraPhoto("YNS_" + videoContext.Time.ToLocalTime().ToString("yyyyMMdd_HHmmss") + ".mp4", videoContext.Project, metadata);
-            var landscape = texture.Width > texture.Height; var width = landscape ? 1280 : 720; var height = landscape ? 720 : 1280;
+            var landscape = texture.Width > texture.Height;
+            var longEdge = scanVideo ? Math.Max(cameraWidth, cameraHeight) : 1280; var shortEdge = scanVideo ? Math.Min(cameraWidth, cameraHeight) : 720;
+            var width = landscape ? longEdge : shortEdge; var height = landscape ? shortEdge : longEdge;
             if (OperatingSystem.IsAndroidVersionAtLeast(31)) movie = new(this);
             else
             {
@@ -58,7 +60,7 @@ public sealed partial class CameraActivity
             {
                 if (options.RecordAudio) recorder.SetAudioSource(AudioSource.Mic);
                 recorder.SetVideoSource(VideoSource.Surface); recorder.SetOutputFormat(OutputFormat.Mpeg4);
-                recorder.SetVideoEncoder(VideoEncoder.H264); recorder.SetVideoSize(width, height); recorder.SetVideoFrameRate(30); recorder.SetVideoEncodingBitRate(6_000_000);
+                recorder.SetVideoEncoder(VideoEncoder.H264); recorder.SetVideoSize(width, height); recorder.SetVideoFrameRate(30); recorder.SetVideoEncodingBitRate(scanVideo ? 12_000_000 : 6_000_000);
                 if (options.RecordAudio) { recorder.SetAudioEncoder(AudioEncoder.Aac); recorder.SetAudioEncodingBitRate(128_000); recorder.SetAudioSamplingRate(44_100); }
                 if (scanVideo) recorder.SetMaxDuration(90_000);
                 recorder.SetMaxFileSize(Math.Min(available, scanVideo ? 512L * 1024 * 1024 : 20L * 1024 * 1024 * 1024));

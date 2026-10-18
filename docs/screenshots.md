@@ -104,3 +104,9 @@
 ![视频自动选帧](screenshots/mobile-3d-video.png)
 
 ![环绕录像与取景辅助线](screenshots/mobile-3d-video-capture.png)
+
+### 原图贴图模型（Android 1.3.2 / 服务端）
+
+同一组合成多视角照片生成的模型；文字使用照片纹理保留，不再仅靠顶点颜色。仍可见几何孔洞和部分接缝，不代表真实工程现场的重建质量。
+
+![原图投影纹理模型](screenshots/server-model-textured.png)

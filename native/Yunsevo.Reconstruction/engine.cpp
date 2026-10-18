@@ -47,7 +47,7 @@ static double focal35mm(const std::vector<unsigned char>& bytes){
 }
 
 static std::string safe(std::string x){for(auto&c:x)if(c=='"'||c=='\\'||(unsigned char)c<32)c=' ';return x;}
-struct Camera{Mat color,gray,desc;std::vector<cv::KeyPoint> features;Matx33d R=Matx33d::eye();Vec3d t{0,0,0};bool registered=false;int offset=0;};
+struct Camera{fs::path source;cv::Rect photoRect;int sourceSide=0;Mat color,gray,desc;std::vector<cv::KeyPoint> features;Matx33d R=Matx33d::eye();Vec3d t{0,0,0};bool registered=false;int offset=0;};
 struct Track{std::map<int,int> observations;Point3d point;bool good=false;};
 struct Pair{int a,b;std::vector<cv::DMatch> matches;Mat R,t;double score=0;};
 struct Progress{YvProgress callback;void*user;std::shared_ptr<int> maximum=std::make_shared<int>(0);void operator()(int n,const std::string&s){n=std::max(n,*maximum);*maximum=n;if(callback&&callback(user,n,s.c_str()))throw std::runtime_error("CANCELLED");}};
@@ -180,14 +180,7 @@ static void fuse(const std::vector<Camera>& cameras,const std::vector<Mat>& colo
  std::vector<uint32_t> kept;for(size_t i=0;i<indices.size();i+=3)if(counts[root(indices[i])]>=std::max<size_t>(40,indices.size()/3000))kept.insert(kept.end(),{indices[i],indices[i+1],indices[i+2]});indices.swap(kept);
  std::vector<Vertex> compact;std::vector<uint32_t> remap(vertices.size(),UINT32_MAX);for(auto&id:indices){if(remap[id]==UINT32_MAX){remap[id]=(uint32_t)compact.size();compact.push_back(vertices[id]);}id=remap[id];}vertices.swap(compact);
 }
-static void glb(const fs::path&path,const std::vector<Vertex>&vertices,const std::vector<uint32_t>&indices,const std::string&backend,int photos,int registered){
- if(vertices.empty()||indices.size()<300)throw std::runtime_error("Insufficient consistent surface geometry; model was not published.");
- float lo[3]={1e30f,1e30f,1e30f},hi[3]={-1e30f,-1e30f,-1e30f};for(auto&v:vertices){const float xyz[]={v.x,v.y,v.z};for(int i=0;i<3;i++){lo[i]=std::min(lo[i],xyz[i]);hi[i]=std::max(hi[i],xyz[i]);}}
- size_t vb=vertices.size()*sizeof(Vertex),ib=indices.size()*4;std::ostringstream js;js.imbue(std::locale::classic());
- js<<"{\"asset\":{\"version\":\"2.0\",\"generator\":\"Yunsevo reconstruction experimental 0.1\"},\"extras\":{\"backend\":\""<<safe(backend)<<"\",\"photos\":"<<photos<<",\"registeredCameras\":"<<registered<<",\"scale\":\"relative; not a survey measurement\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"COLOR_0\":2},\"indices\":3,\"material\":0}]}],\"materials\":[{\"doubleSided\":true,\"pbrMetallicRoughness\":{\"metallicFactor\":0,\"roughnessFactor\":1}}],\"buffers\":[{\"byteLength\":"<<vb+ib<<"}],\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":"<<vb<<",\"byteStride\":36,\"target\":34962},{\"buffer\":0,\"byteOffset\":"<<vb<<",\"byteLength\":"<<ib<<",\"target\":34963}],\"accessors\":[{\"bufferView\":0,\"byteOffset\":0,\"componentType\":5126,\"count\":"<<vertices.size()<<",\"type\":\"VEC3\",\"min\":["<<lo[0]<<","<<lo[1]<<","<<lo[2]<<"],\"max\":["<<hi[0]<<","<<hi[1]<<","<<hi[2]<<"]},{\"bufferView\":0,\"byteOffset\":12,\"componentType\":5126,\"count\":"<<vertices.size()<<",\"type\":\"VEC3\"},{\"bufferView\":0,\"byteOffset\":24,\"componentType\":5126,\"count\":"<<vertices.size()<<",\"type\":\"VEC3\"},{\"bufferView\":1,\"componentType\":5125,\"count\":"<<indices.size()<<",\"type\":\"SCALAR\"}]}";
- std::string json=js.str();while(json.size()%4)json+=' ';uint32_t header[]={0x46546c67,2,(uint32_t)(12+8+json.size()+8+vb+ib),(uint32_t)json.size(),0x4e4f534a};
- auto temp=path;temp+=".partial";std::ofstream out(temp,std::ios::binary);if(!out)throw std::runtime_error("Cannot create output");out.write((char*)header,sizeof(header));out.write(json.data(),json.size());uint32_t chunk[]={(uint32_t)(vb+ib),0x004e4942};out.write((char*)chunk,8);out.write((char*)vertices.data(),vb);out.write((char*)indices.data(),ib);out.close();if(!out)throw std::runtime_error("Output write failed");fs::rename(temp,path);
-}
+#include "texture_mesh.h"
 const char* yv_last_error(){return errorText.c_str();}
 const char* yv_capabilities(){try{VulkanDepth vk;capabilities="{\"cpu\":true,\"vulkan\":true,\"device\":\""+safe(vk.name())+"\",\"experimental\":true}";}catch(const std::exception&e){capabilities="{\"cpu\":true,\"vulkan\":false,\"reason\":\""+safe(e.what())+"\",\"experimental\":true}";}return capabilities.c_str();}
 int yv_reconstruct(const char*input,const char*output,const char*requested,int quality,YvProgress callback,void*user){
@@ -203,7 +196,7 @@ int yv_reconstruct(const char*input,const char*output,const char*requested,int q
    if(fs::file_size(p)>40*1024*1024)throw std::runtime_error("Photo exceeds 40 MB");
    // imdecode supports UTF-8 filenames on Windows; OpenCV applies JPEG EXIF orientation.
    std::ifstream stream(p,std::ios::binary);std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(stream)),{});if(!boundedImage(bytes))throw std::runtime_error("Unsupported image or image exceeds 80 megapixels / 16000 pixels per side");Mat image=cv::imdecode(bytes,cv::IMREAD_COLOR);if(image.empty()||image.total()>80000000)throw std::runtime_error("Invalid / oversized photo");
-   double scale=side/(double)std::max(image.cols,image.rows);double f35=focal35mm(bytes);if(f35>0)measuredFocal.push_back(f35*std::hypot(image.cols,image.rows)/43.2666153*scale);Mat resized;cv::resize(image,resized,cv::Size(),scale,scale,cv::INTER_AREA);Camera c;c.color=Mat::zeros(side,side,CV_8UC3);resized.copyTo(c.color(cv::Rect((side-resized.cols)/2,(side-resized.rows)/2,resized.cols,resized.rows)));cv::cvtColor(c.color,c.gray,cv::COLOR_BGR2GRAY);cameras.push_back(std::move(c));
+   double scale=side/(double)std::max(image.cols,image.rows);double f35=focal35mm(bytes);if(f35>0)measuredFocal.push_back(f35*std::hypot(image.cols,image.rows)/43.2666153*scale);Mat resized;cv::resize(image,resized,cv::Size(),scale,scale,cv::INTER_AREA);Camera c;c.source=p;c.sourceSide=std::max(image.cols,image.rows);c.photoRect=cv::Rect((side-resized.cols)/2,(side-resized.rows)/2,resized.cols,resized.rows);c.color=Mat::zeros(side,side,CV_8UC3);resized.copyTo(c.color(cv::Rect((side-resized.cols)/2,(side-resized.rows)/2,resized.cols,resized.rows)));cv::cvtColor(c.color,c.gray,cv::COLOR_BGR2GRAY);cameras.push_back(std::move(c));
   }
   if(!measuredFocal.empty()){std::sort(measuredFocal.begin(),measuredFocal.end());focal=measuredFocal[measuredFocal.size()/2];if(measuredFocal.back()/measuredFocal.front()>1.12)throw std::runtime_error("Mixed focal lengths: use one camera and fixed zoom for the whole scan");report(2,"EXIF focal calibration "+std::to_string(focal));}
   else report(2,"No EXIF focal calibration; using estimated focal length. If reconstruction fails, recapture with guided camera.");
@@ -235,6 +228,6 @@ int yv_reconstruct(const char*input,const char*output,const char*requested,int q
   }
   report(90,"fusing depth measurements");fuse(cameras,colors,depths,dense,f,quality,vertices,indices,report);
   if(indices.size()>3000000)throw std::runtime_error("Surface exceeds mobile mesh budget");for(auto&v:vertices){auto linear=[](float c){return c<=.04045f?c/12.92f:std::pow((c+.055f)/1.055f,2.4f);};v.r=linear(v.r);v.g=linear(v.g);v.b=linear(v.b);float n=std::sqrt(v.nx*v.nx+v.ny*v.ny+v.nz*v.nz);if(n>0){v.nx/=n;v.ny/=n;v.nz/=n;}}
-  report(98,"writing GLB mesh");glb(fs::u8path(output),vertices,indices,backend,(int)cameras.size(),registered);report(100,"completed");return 0;
+  report(98,"writing GLB mesh");glb(fs::u8path(output),vertices,indices,cameras,depths,focal,dense,quality?4096:2048,backend,registered,report);report(100,"completed");return 0;
  }catch(const std::exception&e){errorText=e.what();return errorText=="CANCELLED"?2:1;}catch(...){errorText="Native reconstruction failed";return 1;}
 }

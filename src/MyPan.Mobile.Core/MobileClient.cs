@@ -63,14 +63,19 @@ public sealed class MobileClient : IDisposable
     }
     public async Task Logout(CancellationToken ct)
     {
-        var current = Volatile.Read(ref session); if (current == null) return;
-        using var response = await current.Connection.Http.PostAsync("api/auth/logout", null, ct);
-        await CloudConnection.Check(response, ct);
+        Session? current;
         lock (sessionGate)
         {
-            if (IsCurrent(current)) { vault.Clear(); session = null; }
+            current = session; if (current == null) return;
+            // Local sign-out must complete even if the server is unreachable. Clear the vault
+            // before dropping the session so a storage failure cannot pretend to sign out.
+            vault.Clear(); session = null;
         }
-        current.Connection.Dispose();
+        current.Connection.Dispose(); // Abort in-flight requests from the signed-out session.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct); budget.CancelAfter(TimeSpan.FromSeconds(2));
+        using var revoke = new CloudConnection(current.Account.Server, current.Account.Login.AccessToken);
+        try { using var response = await revoke.Http.PostAsync("api/auth/logout", null, budget.Token); }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException) { }
     }
     public Task<List<SyncFolder>> Folders(CancellationToken ct) => Folders(Current.Connection, ct);
     private static async Task<List<SyncFolder>> Folders(CloudConnection connection, CancellationToken ct)

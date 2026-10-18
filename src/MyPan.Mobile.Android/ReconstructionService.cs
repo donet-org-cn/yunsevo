@@ -25,11 +25,18 @@ public sealed class ReconstructionService : Service
         StartForeground(NotificationId, Notification("正在准备三维重建"));
         _ = Task.Run(() =>
         {
+            string? previousModel = null;
             var last = -1; long updated = 0; var started = System.Environment.TickCount64;
             try
             {
                 var value = ScanStore.Get(id); if (value.State == "running") throw new IOException("此任务已在运行。");
                 ScanStore.Edit(id, x => x with { State = "running", Progress = 0, Message = "正在本机重建" });
+                if (File.Exists(ScanStore.Model(id)))
+                {
+                    var backup = Path.Combine(ScanStore.Home(id), "model-before-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + ".glb");
+                    try { File.Copy(ScanStore.Model(id), backup + ".partial"); File.Move(backup + ".partial", backup); previousModel = backup; File.Delete(ScanStore.Model(id)); }
+                    finally { if (File.Exists(backup + ".partial")) File.Delete(backup + ".partial"); }
+                }
                 ReconstructionNative.Generate(id, value.Backend, (_, percent, text) =>
                 {
                     if (cancel || AppServices.Client.AccountKey != value.Account || System.Environment.TickCount64 - started > 30 * 60 * 1000L) return 1;
@@ -45,9 +52,9 @@ public sealed class ReconstructionService : Service
                     }
                     catch (Exception) { return 1; }
                 });
-                ScanStore.Edit(id, x => x with { State = "ready", Progress = 100, Message = "本机模型已生成，可预览或上传云端。" });
+                ScanStore.Edit(id, x => x with { State = "ready", ModelUpload = null, Progress = 100, Message = "本机模型已生成，已保留可用原图贴图，可预览或上传云端。" });
             }
-            catch (Exception ex) { try { ScanStore.Edit(id, x => x with { State = "failed", Message = ex.Message == "CANCELLED" ? "已停止，原始照片已保留。" : ex.Message }); } catch (Exception) { } }
+            catch (Exception ex) { try { if (previousModel != null && File.Exists(previousModel)) File.Copy(previousModel, ScanStore.Model(id), true); ScanStore.Edit(id, x => x with { State = "failed", Message = ex.Message == "CANCELLED" ? "已停止，原始照片已保留。" : ex.Message }); } catch (Exception) { } }
             finally
             {
                 var partial = ScanStore.Model(id) + ".partial"; if (File.Exists(partial)) File.Delete(partial);

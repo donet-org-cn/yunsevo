@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
-import { createServer } from 'node:net';
+import { createServer, isIP } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
 
@@ -71,15 +71,18 @@ async function until(operation, description, timeout = 30000) {
 }
 const socket = createServer(); await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
 const port = socket.address().port; await new Promise(resolve => socket.close(resolve));
-const url = 'http://127.0.0.1:' + port, ownerPassword = randomBytes(24).toString('hex'), password = randomBytes(20).toString('hex');
+const directLan = process.env.MYPAN_TEST_DIRECT_LAN;
+if(directLan && isIP(directLan)!==4) throw new Error('Use a literal LAN IPv4 address');
+const bindHost=directLan?'0.0.0.0':'127.0.0.1';
+const url = 'http://' + (directLan??'127.0.0.1') + ':' + port, ownerPassword = randomBytes(24).toString('hex'), password = randomBytes(20).toString('hex');
 const env = { ...process.env };
 for (const key of Object.keys(env)) if (key.toLowerCase().startsWith('mypan__')) delete env[key];
-Object.assign(env, { ASPNETCORE_URLS: url, MyPan__UnattendedSetup: 'true', MyPan__AdminUsername: 'mobileadmin', MyPan__AdminPassword: ownerPassword,
+Object.assign(env, { ASPNETCORE_URLS: 'http://'+bindHost+':'+port, MyPan__UnattendedSetup: 'true', MyPan__AdminUsername: 'mobileadmin', MyPan__AdminPassword: ownerPassword,
   MyPan__DataPath: path.join(root, 'server'), MyPan__ApiKeyFile: path.join(root, 'key.txt'), MyPan__InstallationFile: path.join(root, 'settings.json'), Logging__LogLevel__Default: 'Warning' });
 env.MyPan__ReconstructionEngine=path.resolve('artifacts/reconstruction-native/win-x64/yunsevo-reconstruct.exe');
 const server = spawn(path.resolve('artifacts/reconstruction-update/server/MyPan.Server.exe'), [], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let serverLog = ''; server.stdout.on('data', b => serverLog += b); server.stderr.on('data', b => serverLog += b);
-let headers;
+let headers, stalledServer; const stalledSockets = new Set();
 const request = async (route, method = 'GET', body = null) => {
   const response = await fetch(url + route, { method, headers: { ...headers, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
   if (!response.ok) throw new Error('Fixture API ' + response.status + ': ' + await response.text());
@@ -96,11 +99,11 @@ try {
  const modelPath=process.env.MYPAN_TEST_MODEL??path.join('.test-data/reconstruction',verified[0]??'', 'vulkan.glb');
  const modelBytes=await readFile(modelPath);
  const upload=await fetch(url+'/api/content?path='+encodeURIComponent(personal.path+'/device-model.glb'),{method:'PUT',headers:{...deviceHeaders,'If-None-Match':'*'},body:modelBytes});assert(upload.ok,'A genuine reconstructed GLB is available in the test account');
- await adb('reverse','tcp:'+port,'tcp:'+port);await adb('shell','pm','clear','app.yunsevo.drive');await adb('logcat','-b','crash','-c');
+ if(!directLan) await adb('reverse','tcp:'+port,'tcp:'+port);await adb('shell','pm','clear','app.yunsevo.drive');await adb('logcat','-b','crash','-c');
  for(const permission of ['android.permission.CAMERA','android.permission.READ_MEDIA_IMAGES','android.permission.READ_MEDIA_VIDEO','android.permission.POST_NOTIFICATIONS'])await adb('shell','pm','grant','app.yunsevo.drive',permission);
  await adb('shell','svc','wifi','enable');await adb('shell','cmd','wifi','connect-network','AndroidWifi','open');
  await adb('shell','monkey','-p','app.yunsevo.drive','-c','android.intent.category.LAUNCHER','1');
- await waitNode('登录');await input('服务器地址',url,12);await input('用户名','scanner');await input('密码',password);await adb('shell','input','keyevent','4');await click('登录');await waitNode('我的文件');assert(true,'Release Mono AOT Android app logs in');
+ await waitNode('登录');await input('服务器地址',url,12);await input('用户名','scanner');await input('密码',password);await adb('shell','input','keyevent','4');await click('登录');await waitNode('我的文件');assert(true,directLan?'Release Mono AOT Android logs in over direct LAN HTTP without ADB reverse':'Release Mono AOT Android app logs in');
  await click('工程拍照');await click('三维扫描 · 拍摄或从相册创建');await waitNode('新建扫描');await until(async()=>(await nodes()).some(x=>x.text?.includes('本机 CPU 可用')),'native CPU capability detection');assert(true,'Android x64 package loads real native CPU engine and rejects software Vulkan as a GPU');
  if(process.env.MYPAN_TEST_VIDEO==='true') {
   const ffmpeg=process.env.MYPAN_FFMPEG??'ffmpeg';
@@ -146,6 +149,21 @@ try {
  await until(async()=>(await nodes()).some(x=>x.text?.includes('停止本机生成')||x.text?.includes('需要处理')),'native foreground reconstruction starts',30000);
  if((await nodes()).some(x=>x.text==='停止本机生成'))await click('停止本机生成');
  await until(async()=>(await nodes()).some(x=>x.text?.includes('需要处理')),'native cancellation or insufficient-overlap failure',45000);assert((await nodes()).some(x=>x.text?.startsWith('6/72 张')),'Failed or cancelled generation preserves all original photographs');
+ if(process.env.MYPAN_TEST_REGEN==='true') {
+  const home='/data/data/app.yunsevo.drive/files/sync/scans/';
+  const dirs=(await adb('shell','su','0','ls',home)).trim().split(/\s+/);let scanId,session;
+  for(const id of dirs){const value=JSON.parse(await adb('exec-out','su','0','cat',home+id+'/session.json'));if(value.Name==='PumpScan'){scanId=id;session=value;break;}}
+  if(!/^[a-f0-9]{32}$/.test(scanId??''))throw new Error('No isolated regeneration fixture');
+  await adb('push',modelPath,'/data/local/tmp/yunsevo-regen-fixture.glb');await adb('shell','su','0','cp','/data/local/tmp/yunsevo-regen-fixture.glb',home+scanId+'/model.glb');
+  async function setSession(message){session.State='ready';session.Message=message;const file=path.join(root,'scan-session.json');await writeFile(file,JSON.stringify(session));await adb('push',file,'/data/local/tmp/yunsevo-regen-session.json');await adb('shell','su','0','cp','/data/local/tmp/yunsevo-regen-session.json',home+scanId+'/session.json');}
+  await setSession('regeneration-fixture-ready');await click('用原片重新生成 · 保留旧模型副本');await click('CPU');await click('开始');
+  await until(async()=>(await nodes()).some(x=>x.text?.includes('停止本机生成')||x.text?.includes('需要处理')),'regeneration starts');
+  if((await nodes()).some(x=>x.text==='停止本机生成'))await click('停止本机生成');
+  await until(async()=>(await nodes()).some(x=>x.text?.includes('需要处理')),'regeneration cancellation');
+  const hash=await adb('exec-out','su','0','sha256sum',home+scanId+'/model.glb');assert(hash.startsWith(createHash('sha256').update(modelBytes).digest('hex')),'Failed or cancelled regeneration restores the exact previous model');
+  assert((await adb('shell','su','0','ls',home+scanId)).includes('model-before-'),'Regeneration retains a separate previous-model backup');
+  await adb('shell','su','0','rm',home+scanId+'/model.glb');session.State='failed';session.Message='regeneration-fixture-complete';const file=path.join(root,'scan-session.json');await writeFile(file,JSON.stringify(session));await adb('push',file,'/data/local/tmp/yunsevo-regen-session.json');await adb('shell','su','0','cp','/data/local/tmp/yunsevo-regen-session.json',home+scanId+'/session.json');
+ }
  await click('提交服务端生成');await until(async()=>{
   const files=(await request('/api/entries')).entries.filter(x=>x.origin?.kind==='scan');return files.length===6;
  },'durable original upload',60000);
@@ -156,7 +174,18 @@ try {
  await adb('shell','input','keyevent','4');await click('文件');await click('▣  /个人');await click('▤  device-model.glb');
  await waitNode('自动环绕',45000);await delay(3500);await screenshot('mobile-3d-viewer');await click('自动环绕');await waitNode('停止环绕');assert(true,'Offline WebView loads GLB, executes bundled viewer and toggles real orbit');
  await click('复位');await waitNode('自动环绕');assert(true,'Android model view resets its rotation');
+ if(process.env.MYPAN_TEST_OFFLINE_EXIT==='true') {
+  server.kill();await once(server,'exit');
+  stalledServer=createServer(socket=>{stalledSockets.add(socket);socket.on('data',()=>{});socket.on('close',()=>stalledSockets.delete(socket));});
+  await new Promise(resolve=>stalledServer.listen(port,bindHost,resolve));
+  await adb('shell','input','keyevent','4');await click('文件');
+  const started=Date.now();await click('我的');await click('退出登录');await waitNode('登录',15000);
+  assert(Date.now()-started<15000,'Unresponsive server cannot block My page or local sign-out');
+  await click('关闭应用');await delay(400);
+  const activity=await adb('shell','dumpsys','activity','activities');assert(!/topResumedActivity=.*app\.yunsevo\.drive/.test(activity),'Signed-out app closes normally without a server connection');
+  await adb('shell','monkey','-p','app.yunsevo.drive','-c','android.intent.category.LAUNCHER','1');await waitNode('登录');assert(true,'Offline sign-out persists across an app restart');
+ }
  const crash=await adb('logcat','-b','crash','-d');assert(!crash.includes('FATAL EXCEPTION')&&!crash.includes('Fatal signal'),'No Android managed or native crashes');
  await writeFile(path.join(root,'verification.json'),JSON.stringify({success:true,checks,apkSha256:createHash('sha256').update(await readFile('artifacts/reconstruction-update/mobile/android-x64/yunsevo-android-x64.apk')).digest('hex')},null,2));console.log('Verification:',root);
 }catch(e){await screenshot('failure').catch(()=>{});await writeFile(path.join(root,'failure.json'),JSON.stringify({error:e.stack,checks},null,2));throw e;}
-finally{await adb('shell','am','force-stop','app.yunsevo.drive').catch(()=>{});server.kill();await writeFile(path.join(root,'server.log'),serverLog);}
+finally{for(const socket of stalledSockets)socket.destroy();stalledServer?.close();await adb('shell','am','force-stop','app.yunsevo.drive').catch(()=>{});server.kill();await writeFile(path.join(root,'server.log'),serverLog);}

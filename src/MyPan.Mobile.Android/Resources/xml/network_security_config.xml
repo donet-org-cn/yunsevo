@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-  <base-config cleartextTrafficPermitted="false"><trust-anchors><certificates src="system" /></trust-anchors></base-config>
-  <domain-config cleartextTrafficPermitted="true">
-    <domain>localhost</domain>
-    <domain>127.0.0.1</domain>
-    <domain>::1</domain>
-  </domain-config>
+  <!-- Android has no CIDR rule. CloudConnection enforces literal LAN/loopback HTTP
+       on every request and disables redirects; public endpoints require HTTPS. -->
+  <base-config cleartextTrafficPermitted="true"><trust-anchors><certificates src="system" /></trust-anchors></base-config>
 </network-security-config>

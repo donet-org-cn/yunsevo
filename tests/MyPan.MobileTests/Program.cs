@@ -69,6 +69,20 @@ try
     Assert(frameClock.Timestamp(sensor, mono) == mono, "Every recording starts with a fresh timestamp mapping");
     Assert(frameClock.Timestamp(sensor + 11_000_000_000L, mono + 11_000_000_000L) - mono == 11_000_000_000L, "An eleven-second recording has an eleven-second video timeline");
     Assert(frameClock.Timestamp(sensor - 1, mono + 11_033_000_000L) == mono + 11_033_000_000L, "Backward sensor timestamps recover without reversing presentation time");
+    foreach (var local in new[] { "http://192.168.1.8:5080", "http://10.77.0.5", "http://172.16.0.1", "http://172.31.255.254", "http://169.254.1.2", "http://[fd12::1]", "http://[fe80::1]", "http://[::ffff:192.168.1.8]", "https://example.com" })
+    {
+        using var allowed = new CloudConnection(local); Assert(allowed.Http.BaseAddress != null, "Accept supported server: " + local);
+    }
+    foreach (var remote in new[] { "http://8.8.8.8", "http://172.15.0.1", "http://172.32.0.1", "http://192.169.1.1", "http://example.com", "http://0.0.0.0", "http://[2001:4860:4860::8888]", "http://[::ffff:8.8.8.8]", "http://user:secret@192.168.1.8", "http://192.168.1.8?token=secret" })
+    {
+        var rejected = false; try { using var denied = new CloudConnection(remote); } catch (ArgumentException) { rejected = true; }
+        Assert(rejected, "Reject public or malformed cleartext server: " + remote.Split('@').Last().Split('?')[0]);
+    }
+    using (var localOnly = new CloudConnection("http://127.0.0.1"))
+    {
+        var rejected = false; try { using var response = await localOnly.Http.GetAsync("http://example.com"); } catch (ArgumentException) { rejected = true; }
+        Assert(rejected, "Absolute HTTP requests cannot bypass LAN validation or send credentials to public hosts");
+    }
     await Start();
     var repository = new MobileRepository(Path.Combine(root, "phone"));
     using var mobile = new MobileClient(repository, vault);
@@ -282,6 +296,23 @@ try
     await client.Login(url, "mobileowner", password, default);
     Assert(await client.Pump(false, true, default) == 1 && client.Repository.Jobs(originalScope).Single(x => x.Id == awaiting.Id).State == "completed",
         "Returning to the original account resumes its preserved upload queue");
+    var onlineToken = client.Account!.Login.AccessToken;
+    await client.Logout(default);
+    using (var revoked = new HttpClient())
+    {
+        revoked.DefaultRequestHeaders.Authorization = new("Bearer", onlineToken);
+        using var denied = await revoked.GetAsync(url + "/api/me");
+        Assert(denied.StatusCode == HttpStatusCode.Unauthorized, "Online mobile logout revokes the server token");
+    }
+    await client.Login(url, "mobileowner", password, default);
+    var preserved = await client.Stage(new MemoryStream("offline logout queue"u8.ToArray()), "offline-preserved.txt", project, new("shared"), "", default);
+    await Stop();
+    var logout = client.Logout(default);
+    Assert(client.Account == null && vault.Load() == null, "Offline logout clears the active session and remembered vault immediately");
+    await logout.WaitAsync(TimeSpan.FromSeconds(4));
+    using (var signedOut = new MobileClient(new MobileRepository(repository.Home), vault))
+    { signedOut.LoadRemembered(); Assert(signedOut.Account == null, "Restart after offline logout stays signed out"); }
+    Assert(client.Repository.Jobs(originalScope).Any(x => x.Id == preserved.Id && File.Exists(client.Repository.LocalPath(x))), "Offline logout preserves queued local files for the original account");
     await File.WriteAllTextAsync(Path.Combine(root, "verification.json"), new JsonObject { ["checksPassed"] = checks, ["nativeServer"] = executable, ["fixture"] = root }.ToJsonString());
     Console.WriteLine("ALL PASSED: " + checks + " mobile integration checks. " + root);
 }

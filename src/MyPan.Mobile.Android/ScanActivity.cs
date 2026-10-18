@@ -29,7 +29,7 @@ public sealed class ScanActivity : Activity
         _ = Task.Run(ReconstructionNative.Capabilities).ContinueWith(t => RunOnUiThread(() => { if (!IsDestroyed && t.IsCompletedSuccessfully) { caps = t.Result; Render(); } }));
     }
     protected override void OnResume() { base.OnResume();
-        if (!ReconstructionService.IsActive) foreach (var scan in ScanStore.List().Where(x => x.State == "running")) ScanStore.Edit(scan.Id, x => x with { State = File.Exists(ScanStore.Model(scan.Id)) ? "ready" : "failed", Message = "上次生成已中断，原片已保留，可重新生成。" });
+        if (!ReconstructionService.IsActive) foreach (var scan in ScanStore.List().Where(x => x.State == "running")) { ScanStore.RecoverPreviousModel(scan.Id); ScanStore.Edit(scan.Id, x => x with { State = File.Exists(ScanStore.Model(scan.Id)) ? "ready" : "failed", Message = "上次生成已中断，原片与可用的旧模型已保留，可重新生成。" }); }
         if (!busy) foreach (var scan in ScanStore.List().Where(x => x.State == "staging")) ScanStore.Edit(scan.Id, x => x with { State = "failed", Message = "原片准备已中断，可继续提交，已经入队的文件会保留。" });
         Render(); timer.PostDelayed(Tick, 1200); }
     protected override void OnPause() { timer.RemoveCallbacksAndMessages(null); base.OnPause(); }
@@ -95,6 +95,9 @@ public sealed class ScanActivity : Activity
                 body.AddView(Ui.Button(this, "提交服务端生成", () => _ = Run(() => Submit(scan.Id)), false));
             }
         }
+        if (!working && scan.Inputs == null)
+            body.AddView(Ui.Button(this, "生成质量：" + (scan.Quality == 1 ? "精细 · 原图贴图最高 4K" : "快速预览 · 原图贴图最高 2K"), () =>
+                new AlertDialog.Builder(this)!.SetTitle("三维生成质量")!.SetItems(new[] { "快速预览 · 2K 贴图", "精细 · 4K 贴图，耗时和内存更多" }, (_, choice) => { ScanStore.Edit(scan.Id, x => x with { Quality = choice.Which }); Render(); })!.Show(), false));
         if (!working && scan.Inputs != null && !scan.RemoteJob.HasValue) body.AddView(Ui.Button(this, "继续上传原片并提交", () => _ = Run(() => Submit(scan.Id)), false));
         if (!working) body.AddView(Ui.Button(this, "清理本机扫描", () =>
         {
@@ -105,6 +108,7 @@ public sealed class ScanActivity : Activity
         if (scan.State == "remote") body.AddView(Ui.Button(this, "取消服务端任务", () => _ = Run(async () => { using var r = await AppServices.Client.Connection!.Http.DeleteAsync("api/reconstruction/jobs/" + scan.RemoteJob, stop.Token); await CloudConnection.Check(r, stop.Token); await Poll(scan); Render(); }), false));
         if (File.Exists(ScanStore.Model(scan.Id)))
         {
+            if (!working && files.Length >= 6) body.AddView(Ui.Button(this, "用原片重新生成 · 保留旧模型副本", () => PickBackend(scan.Id), false));
             body.AddView(Ui.Button(this, "旋转／缩放查看模型", () => StartActivity(new Intent(this, typeof(LocalModelActivity)).PutExtra("scan", scan.Id.ToString()))));
             if (!scan.ModelUpload.HasValue) body.AddView(Ui.Button(this, "上传模型到云端", () => _ = Run(async () =>
             {
@@ -158,6 +162,7 @@ public sealed class ScanActivity : Activity
     private void Camera(Guid id, bool video = false)
     {
         if (busy) return;
+        try { ScanStore.EnsureCollecting(id); } catch (Exception ex) when (ex is IOException or InvalidOperationException) { Ui.Alert(this, "无法继续采集", ex.Message); return; }
         if (CheckSelfPermission(global::Android.Manifest.Permission.Camera) != Permission.Granted) { selected = id; importing = video ? id : null; RequestPermissions([global::Android.Manifest.Permission.Camera], 972); return; }
         importing = id; StartActivityForResult(new Intent(this, typeof(CameraActivity)).PutExtra("scan", id.ToString()).PutExtra("scanVideo", video), 975);
     }
@@ -171,7 +176,7 @@ public sealed class ScanActivity : Activity
         new AlertDialog.Builder(this)!.SetTitle("选择本机计算方式")!.SetItems(choices, (_, args) =>
         {
             var backend = caps.Vulkan ? new[] { "auto", "vulkan", "cpu" }[args.Which] : "cpu";
-            new AlertDialog.Builder(this)!.SetTitle("开始三维重建？")!.SetMessage("这是试验功能，可能需要几分钟并导致手机发热。请保持通风，可从通知栏停止；原片会保留。")!.SetPositiveButton("开始", (_, _) =>
+            new AlertDialog.Builder(this)!.SetTitle("开始三维重建？")!.SetMessage("这是试验功能，可能需要几分钟并导致手机发热。请保持通风，可从通知栏停止；原片会保留，已有本机模型会保存副本；生成失败会恢复旧模型。")!.SetPositiveButton("开始", (_, _) =>
             {
                 ScanStore.Edit(id, x => x with { Backend = backend, State = "collecting" });
                 if (OperatingSystem.IsAndroidVersionAtLeast(33) && CheckSelfPermission(global::Android.Manifest.Permission.PostNotifications) != Permission.Granted) RequestPermissions([global::Android.Manifest.Permission.PostNotifications], 973);

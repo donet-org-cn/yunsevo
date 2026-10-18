@@ -4,7 +4,7 @@
 
 多文件同步支持受控并发与批次处理；大文件支持分块续传、范围下载和校验，服务端及客户端使用可恢复的增量状态日志。配置、恢复文件及当前边界见[同步性能说明](docs/sync-performance.md)。
 
-Android 手机端 1.3.1 支持全屏工程相机、拍摄时切换工程、照片/视频水印、EXIF 参数保留，以及仅云端或同时保存本机。云端相册使用服务端小缩略图和滚动续载，支持左右滑动看图、缩放、保存与分享。地址和天气服务在服务端配置。安装包生成于 artifacts/mobile/android-arm64/yunsevo-android-arm64.apk，需配合新版服务端；使用流程、构建、后台限制和签名说明见[手机端说明](docs/mobile.md)。当前为内部测试签名，尚未纳入 v2.6.2 发布包；iPhone 端后续开发。
+Android 手机端 1.3.2 支持全屏工程相机、拍摄时切换工程、照片/视频水印、EXIF 参数保留，以及仅云端或同时保存本机。云端相册使用服务端小缩略图和滚动续载，支持左右滑动看图、缩放、保存与分享。地址和天气服务在服务端配置。安装包生成于 artifacts/mobile/android-arm64/yunsevo-android-arm64.apk，需配合新版服务端；使用流程、构建、后台限制和签名说明见[手机端说明](docs/mobile.md)。当前为内部测试签名，尚未纳入 v2.6.2 发布包；iPhone 端后续开发。
 
 **三维扫描（试验版）**：Android 支持相册选片、引导绕拍、环绕录像自动选帧、手机 Vulkan／CPU 重建和服务端重建；生成真实 GLB 网格，手机与网页均可旋转和缩放。已经完成 48 张物体照片的 Windows CPU、桌面 Vulkan 与 Adreno 830 Vulkan 验证；真实场景质量仍需继续验收，详见[三维扫描说明](docs/reconstruction.md)。
 
@@ -116,7 +116,7 @@ export MYPAN_PASSWORD_FILE="$HOME/.config/mypan/password"
 
 登录页提供无需登录的客户端下载入口，只显示 `server/downloads` 中实际存在的已知发布包。运行 `scripts/publish.ps1` 或 `scripts/publish.sh` 会自动生成对应平台的桌面版、无界面版下载包；已有发布目录可用 `scripts/package-clients.ps1 -Runtime win-x64 -Output artifacts/v2` 重新打包。Windows 为 ZIP，Linux/macOS 为保留可执行权限的 tar.gz。部署服务端时保留 `downloads` 子目录，也可用 `MyPan__ClientDownloadsPath` 指向集中存放包的目录。将其他平台构建完成的包复制到该目录后，对应入口自动出现；不会显示尚未构建的平台。下载支持断点续传，打包仅包含运行文件和第三方许可。
 
-Windows 桌面版下载后完整解压，运行 `MyPan.Desktop.exe`。跨设备客户端登录需要受信任证书的 HTTPS 地址；HTTP 仅允许客户端连接本机回环地址。网页使用 HTTP 测试可访问，但公开部署应配置 HTTPS。
+Windows 桌面版下载后完整解压，运行 `MyPan.Desktop.exe`。客户端可使用受信任证书的 HTTPS 地址；可信局域网可直接使用 `http://服务器内网IP:5080`，无需调试转发。公网和域名连接要求 HTTPS。HTTP 不加密，仅用于可信内网。
 
 客户端复用 HTTP 连接池，本地文件监听 + 服务端 SSE 持续推送变更，200 ms 合并事件，5 秒补查丢失事件和失败重试。网络断开自动重连，成功提交后才推送。文件内容仍通过流式 HTTP 上传/下载，使用 ETag 条件写入保护并发更新。
 

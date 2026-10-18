@@ -15,6 +15,7 @@ public static class ReconstructionMessages
         text.StartsWith("refining", StringComparison.Ordinal) ? "优化空间几何" :
         text.StartsWith("dense", StringComparison.Ordinal) ? "计算多视角深度 · " + (text.Contains("vulkan", StringComparison.Ordinal) ? "Vulkan GPU" : "CPU") :
         text.StartsWith("fusing", StringComparison.Ordinal) ? "融合三维表面" :
+        text.StartsWith("texturing", StringComparison.Ordinal) ? "从原照片生成清晰贴图" :
         text.StartsWith("writing", StringComparison.Ordinal) ? "保存 GLB 模型" :
         text == "completed" ? "重建已完成" : text.StartsWith("EXIF", StringComparison.Ordinal) ? "读取相机焦距标定" :
         text.StartsWith("No EXIF", StringComparison.Ordinal) ? "原片没有焦距标定，使用估计值；如失败请使用引导相机补拍。" : text;

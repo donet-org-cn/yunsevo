@@ -39,6 +39,7 @@ public sealed class CloudConnection : IDisposable
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            if (request.RequestUri is not { } destination || !AllowedEndpoint(destination)) throw new ArgumentException("服务器地址须使用 HTTPS，或使用局域网 IP 的 HTTP 地址。");
             request.Version = request.RequestUri?.Scheme == "https" ? HttpVersion.Version30 : HttpVersion.Version11;
             request.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
             try { var response = await base.SendAsync(request, ct); connected(response.Version, response.StatusCode == HttpStatusCode.Unauthorized); return response; }
@@ -46,10 +47,24 @@ public sealed class CloudConnection : IDisposable
             catch (OperationCanceledException) when (!ct.IsCancellationRequested) { disconnected(); throw; }
         }
     }
+    // Cleartext is limited to literal local addresses; redirects remain disabled. Never
+    // trust DNS names as private networks, since their resolved addresses can change.
+    private static bool AllowedEndpoint(Uri uri)
+    {
+        if (uri.Scheme == "https") return true;
+        if (uri.Scheme != "http") return false;
+        if (uri.IsLoopback) return true;
+        if (!IPAddress.TryParse(uri.IdnHost, out var ip)) return false;
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+        var bytes = ip.GetAddressBytes();
+        return bytes.Length == 4
+            ? bytes[0] == 10 || bytes[0] == 172 && bytes[1] is >= 16 and <= 31 || bytes[0] == 192 && bytes[1] == 168 || bytes[0] == 169 && bytes[1] == 254
+            : ip.IsIPv6LinkLocal || (bytes[0] & 0xfe) == 0xfc;
+    }
     public CloudConnection(string url, string? token = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0 ||
-            uri.Scheme != "https" && !(uri.Scheme == "http" && uri.IsLoopback)) throw new ArgumentException("远程服务器必须使用 HTTPS；本机测试允许 HTTP。");
+            !AllowedEndpoint(uri)) throw new ArgumentException("服务器地址须使用 HTTPS；局域网可用 http://服务器内网IP:端口。");
         Http = new(new ProtocolHandler((version, unauthorized) => { Protocol = "HTTP/" + version; ConnectionChanged?.Invoke(true, unauthorized); }, () => ConnectionChanged?.Invoke(false, false))) { BaseAddress = new Uri(url.TrimEnd('/') + "/"), Timeout = TimeSpan.FromMinutes(30) };
         Http.DefaultRequestHeaders.Add("X-MyPan-Device", Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Environment.MachineName)));
         Http.DefaultRequestHeaders.Add("X-MyPan-Client", "sync");

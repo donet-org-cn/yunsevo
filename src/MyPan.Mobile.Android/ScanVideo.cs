@@ -53,7 +53,7 @@ internal static class ScanVideo
             for (var i = 0; i < chosen.Count; i++)
             {
                 token.ThrowIfCancellationRequested(); var candidate = chosen[i];
-                using var bitmap = retriever.GetScaledFrameAtTime(candidate.Time, Option.Closest, 1920, 1920) ?? throw new IOException("无法解码所选视频帧。");
+                using var bitmap = retriever.GetScaledFrameAtTime(candidate.Time, Option.Closest, 3840, 3840) ?? throw new IOException("无法解码所选视频帧。");
                 var path = Path.Combine(staging, prefix + candidate.Time.ToString("D12", CultureInfo.InvariantCulture) + ".jpg");
                 using (var output = File.Create(path)) if (!bitmap.Compress(Bitmap.CompressFormat.Jpeg!, 95, output)) throw new IOException("视频帧保存失败。");
                 using (var exif = new ExifInterface(path))

@@ -9,7 +9,7 @@ namespace MyPan.Mobile.Android;
 
 internal sealed record ScanSession(Guid Id, string Account, string Name, FolderSelection Folder, DateTimeOffset CreatedUtc,
     string Subject = "object", string State = "collecting", int Progress = 0, string Message = "添加原片或开始引导拍摄", string Backend = "auto",
-    Guid? RemoteJob = null, List<Guid>? UploadJobs = null, Guid? ModelUpload = null, Guid? RemoteRequestId = null, List<string>? Inputs = null);
+    Guid? RemoteJob = null, List<Guid>? UploadJobs = null, Guid? ModelUpload = null, Guid? RemoteRequestId = null, List<string>? Inputs = null, int Quality = 0);
 [JsonSerializable(typeof(ScanSession))]
 internal partial class ScanJson : JsonSerializerContext;
 internal static class ScanStore
@@ -43,6 +43,15 @@ internal static class ScanStore
     public static void Delete(Guid id)
     {
         lock (Gate) { var value = Get(id); if (value.State is "running" or "remote" or "staging" or "uploading") throw new InvalidOperationException("请先结束生成或上传任务。"); Directory.Delete(Home(id), true); }
+    }
+    public static void RecoverPreviousModel(Guid id)
+    {
+        lock (Gate)
+        {
+            Get(id); if (File.Exists(Model(id))) return;
+            var previous = Directory.GetFiles(Home(id), "model-before-*.glb").OrderByDescending(Path.GetFileName, StringComparer.Ordinal).FirstOrDefault();
+            if (previous != null) File.Copy(previous, Model(id));
+        }
     }
     public static string[] Files(Guid id) => Directory.GetFiles(Photos(id)).Where(x => Path.GetExtension(x) is ".jpg" or ".png").OrderBy(x => x, StringComparer.Ordinal).ToArray();
     public static void AddVideoFrames(Guid id, string[] frames, CancellationToken token)
@@ -84,5 +93,5 @@ internal static partial class ReconstructionNative
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException) { return new(false, false, Error: "当前安装包未包含本机重建引擎。"); }
     }
     public static void Generate(Guid id, string backend, Progress progress)
-    { var rc = yv_reconstruct(ScanStore.Photos(id), ScanStore.Model(id), backend, 0, progress, 0); GC.KeepAlive(progress); if (rc != 0) throw new IOException(Marshal.PtrToStringUTF8(yv_last_error()) ?? "重建未完成。"); }
+    { var rc = yv_reconstruct(ScanStore.Photos(id), ScanStore.Model(id), backend, ScanStore.Get(id).Quality, progress, 0); GC.KeepAlive(progress); if (rc != 0) throw new IOException(Marshal.PtrToStringUTF8(yv_last_error()) ?? "重建未完成。"); }
 }

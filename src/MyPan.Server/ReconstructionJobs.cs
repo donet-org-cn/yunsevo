@@ -179,7 +179,7 @@ internal sealed class ReconstructionJobs : IAsyncDisposable
                     lock (gate) { var current = jobs[id]; jobs[id] = current with { Job = current.Job with { State = "running" } }; Update(id, "completed", 100, "模型已生成，可旋转和缩放查看。", model); }
                 }
                 catch (OperationCanceledException) { Update(id, "failed", 0, stopping.IsCancellationRequested ? "服务关闭，任务未完成。" : "任务已取消或超过 30 分钟。请减少照片数量后重试。"); }
-                catch (Exception ex) { Update(id, "failed", 0, ex is StoreException or IOException ? ex.Message : "重建引擎异常，请检查服务端运行包。"); }
+                catch (Exception ex) { var diagnostic = ex.ToString(); Console.Error.WriteLine("Reconstruction " + id + ": " + diagnostic[..Math.Min(diagnostic.Length, 4000)]); Update(id, "failed", 0, ex is StoreException or IOException ? ex.Message : "重建引擎异常，请检查服务端运行包。"); }
                 finally
                 {
                     ReconstructionJob? final; lock (gate) { cancellation.Remove(id); final = jobs.GetValueOrDefault(id)?.Job; }

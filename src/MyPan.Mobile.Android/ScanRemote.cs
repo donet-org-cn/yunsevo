@@ -21,7 +21,7 @@ internal static class ScanRemote
         {
             var jobs = AppServices.Repository.Jobs(scan.Account); var sources = scan.UploadJobs?.Select(id => jobs.FirstOrDefault(x => x.Id == id)).ToList();
             if (sources == null || sources.Any(x => x?.Completed == null)) return;
-            var request = new StartReconstruction(scan.Folder.Id, scan.Name, sources.Select(x => new ReconstructionPhoto(x!.Completed!.Id, x.Completed.Version)).ToList(), Subject: scan.Subject, ClientRequestId: scan.RemoteRequestId ?? scan.Id);
+            var request = new StartReconstruction(scan.Folder.Id, scan.Name, sources.Select(x => new ReconstructionPhoto(x!.Completed!.Id, x.Completed.Version)).ToList(), Quality: scan.Quality, Subject: scan.Subject, ClientRequestId: scan.RemoteRequestId ?? scan.Id);
             using var r = await AppServices.Client.Connection!.Http.PostAsJsonAsync("api/reconstruction/jobs", request, ApiJson.Default.StartReconstruction, ct); await CloudConnection.Check(r, ct);
             var job = await r.Content.ReadFromJsonAsync(ApiJson.Default.ReconstructionJob, ct) ?? throw new IOException("服务端任务响应为空。"); ScanStore.Edit(scan.Id, x => x with { State = "remote", RemoteJob = job.Id, Message = job.Message });
         }

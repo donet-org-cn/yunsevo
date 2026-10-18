@@ -150,7 +150,7 @@ public sealed partial class CameraActivity : Activity, TextureView.ISurfaceTextu
             reader = ImageReader.NewInstance(size.Width, size.Height, ImageFormatType.Jpeg, 2);
             reader.SetOnImageAvailableListener(new ImageListener(this), handler);
             var previewSizes = map?.GetOutputSizes(Java.Lang.Class.FromType(typeof(SurfaceTexture))!);
-            var previewSize = previewSizes?.Where(x => Math.Max(x.Width, x.Height) <= 1920).OrderBy(x => Math.Abs(x.Width / (float)x.Height - 16f / 9)).ThenBy(x => Math.Abs(x.Width - 1280)).FirstOrDefault() ?? new global::Android.Util.Size(1280, 720);
+            var previewSize = previewSizes?.Where(x => Math.Max(x.Width, x.Height) <= 1920).OrderBy(x => Math.Abs(x.Width / (float)x.Height - 16f / 9)).ThenBy(x => Math.Abs(x.Width - (scanVideo ? 1920 : 1280))).FirstOrDefault() ?? new global::Android.Util.Size(1280, 720);
             cameraWidth = previewSize.Width; cameraHeight = previewSize.Height;
             var pipe = new CameraGlPipe(error => RunOnUiThread(() => message.Text = error)); gl = pipe;
             surface = await pipe.Initialize(texture.SurfaceTexture!, texture.Width, texture.Height, cameraWidth, cameraHeight, RotationDegrees, front);

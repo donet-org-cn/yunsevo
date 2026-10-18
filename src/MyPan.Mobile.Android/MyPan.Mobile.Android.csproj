@@ -5,8 +5,8 @@
     <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
     <ApplicationId>app.yunsevo.drive</ApplicationId>
     <ApplicationTitle>沄序</ApplicationTitle>
-    <ApplicationDisplayVersion>1.3.1</ApplicationDisplayVersion>
-    <ApplicationVersion>5</ApplicationVersion>
+    <ApplicationDisplayVersion>1.3.3</ApplicationDisplayVersion>
+    <ApplicationVersion>7</ApplicationVersion>
     <ReconstructionAbi Condition="'$(RuntimeIdentifier)' == 'android-arm64'">arm64-v8a</ReconstructionAbi>
     <ReconstructionAbi Condition="'$(RuntimeIdentifier)' == 'android-x64'">x86_64</ReconstructionAbi>
     <AndroidPackageFormats>apk</AndroidPackageFormats>

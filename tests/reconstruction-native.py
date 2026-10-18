@@ -29,7 +29,10 @@ for backend in ["cpu", "vulkan"]:
     (root / (backend+".log")).write_text(result.stdout + result.stderr, encoding="utf-8")
     check(result.returncode == 0, "Actual reconstruction succeeds: " + backend)
     metadata = glb(root / (backend+".glb"))
-    check(metadata["extras"]["registeredCameras"] == 48 and metadata["accessors"][3]["count"] > 3000, "48 cameras and genuine mesh triangles: " + backend)
+    check(metadata["extras"]["registeredCameras"] == 48 and sum(metadata["accessors"][p["indices"]]["count"] for p in metadata["meshes"][0]["primitives"]) > 3000, "48 cameras and genuine mesh triangles: " + backend)
+    check(bool(metadata.get("images")) and all("uri" not in image and image["mimeType"] == "image/jpeg" for image in metadata["images"]), "Original photographs are embedded as offline JPEG textures: " + backend)
+    primitives = metadata["meshes"][0]["primitives"]
+    check(any("TEXCOORD_0" in p["attributes"] and "COLOR_0" not in p["attributes"] for p in primitives), "Photograph detail is not multiplied by blurred vertex colors: " + backend)
     check(metadata["extras"]["backend"].startswith(backend), "Honest compute provenance: " + backend)
     print(backend, round(time.monotonic()-started, 2), "seconds", flush=True)
 # Synchronous native cancellation cannot invoke UI or leak a partial published file.
