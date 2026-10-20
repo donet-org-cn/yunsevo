@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/Yunsevo.Mobile.Core/Yunsevo.Mobile.Core.csproj" />
+  <Project Path="src/Yunsevo.Mobile.Android/Yunsevo.Mobile.Android.csproj" />
+  <Project Path="tests/Yunsevo.MobileTests/Yunsevo.MobileTests.csproj" />
+</Solution>

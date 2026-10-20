@@ -1,6 +1,6 @@
 # V2 API
 
-JSON 使用 camelCase 和源生成序列化。`POST /api/auth/login` 接受 `{ "username": "alice", "password": "..." }`，返回 `accessToken`、`expiresUtc`、`user`。客户端使用 `Authorization: Bearer <accessToken>`；网页登录同时设置 HttpOnly、SameSite=Strict Cookie，用于认证媒体和 SSE。Cookie 写入请求须带 `X-MyPan-Client: web`，浏览器页面不会把令牌放入 URL、localStorage 或 sessionStorage。
+JSON 使用 camelCase 和源生成序列化。`POST /api/auth/login` 接受 `{ "username": "alice", "password": "..." }`，返回 `accessToken`、`expiresUtc`、`user`。客户端使用 `Authorization: Bearer <accessToken>`；网页登录同时设置 HttpOnly、SameSite=Strict Cookie，用于认证媒体和 SSE。Cookie 写入请求须带 `X-Yunsevo-Client: web`，浏览器页面不会把令牌放入 URL、localStorage 或 sessionStorage。
 
 新版网页分页、密码重置、个人修改密码及回收站删除来源的请求与返回约定，见 [界面与管理更新](design-and-workspace.md)。旧的全量目录和最多 300 条审计接口继续兼容，新网页使用 `/api/browser/*` 和 `/api/admin/*/page` 分页接口。
 
@@ -47,6 +47,6 @@ visibility 为 private/public/restricted；private 仅所有者与管理员，pu
 
 主要错误码：400 参数错误、401 未登录 / 会话失效、403 无权限、404 不存在、409 路径 / 配置冲突、412 条件写入冲突、413 超过单文件限制、415 不支持预览、507 配额不足。上传和版本恢复会在提交门内再次校验权限与配额；配额拒绝不会替换当前版本。正在下载的不可变 blob 已打开共享删除句柄，版本清理不影响已开始的传输。
 
-WebDAV 使用 `/dav/`，FTP 使用服务设置中的控制端口，SMB 共享名 `mypan`。它们使用同一份目录数据；内部网关接口仅接受每次主服务端启动生成的独立随机服务凭据，普通用户和 API 密钥不能调用 `/api/internal/*`。
+WebDAV 使用 `/dav/`，FTP 使用服务设置中的控制端口，SMB 共享名 `yunsevo`。它们使用同一份目录数据；内部网关接口仅接受每次主服务端启动生成的独立随机服务凭据，普通用户和 API 密钥不能调用 `/api/internal/*`。
 
 回收站下载、预览和整站迁移导出见 [备份与迁移](backup-and-migration.md)。

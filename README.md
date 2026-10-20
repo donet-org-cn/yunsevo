@@ -6,9 +6,7 @@
 
 Android 手机端 1.3.7 支持全屏工程相机、拍摄时切换工程、照片/视频水印、EXIF 参数保留，以及仅云端或同时保存本机。云端相册使用服务端小缩略图和滚动续载，支持左右滑动看图、缩放、保存与分享。地址和天气服务在服务端配置。安装包生成于 artifacts/mobile/android-arm64/yunsevo-android-arm64.apk，需配合新版服务端；使用流程、构建、后台限制和签名说明见[手机端说明](docs/mobile.md)。当前为内部测试签名，尚未纳入 v2.6.2 发布包；iPhone 端后续开发。
 
-**三维扫描（试验版）**：Android 支持相册选片、引导绕拍、环绕录像自动选帧、手机 Vulkan／CPU 重建和服务端重建；生成真实 GLB 网格，手机与网页均可旋转和缩放。已经完成 48 张物体照片的 Windows CPU、桌面 Vulkan 与 Adreno 830 Vulkan 验证；真实场景质量仍需继续验收，详见[三维扫描说明](docs/reconstruction.md)。
-
-1.3.7 增加手机本机“轮廓精细”：本地识别透明瓶身等对象的轮廓，再计算外形并使用原片贴图，不进行生成式修图。轮廓模式当前使用 CPU，普通设备的深度精细保留 Vulkan。支持从保留的原视频重新选帧到独立版本；旧模型保留。手机共用算法和云端流程已经分别用同一批 60 张矿泉水原片验证，结果与未测量区域的限制见三维扫描说明。
+**3D 模型查看**：网页与 Android 支持查看已有 GLB 文件，可旋转、缩放、自动环绕、保存及分享；网页回收站中的 GLB 也能预览。手机“我的文件 → 本机已有 3D 模型”可打开原先已保存在本机的模型。模型查看离线资源随程序打包。
 
 商业品牌使用“沄序 · Yunsevo”，桌面客户端为“沄序 Drive”。新版界面、分页、密码重置和回收站来源记录见 [界面与管理说明](docs/design-and-workspace.md)。现有程序文件名、配置和同步根标识保留兼容。
 
@@ -36,11 +34,11 @@ Android 手机端 1.3.7 支持全屏工程相机、拍摄时切换工程、照�
 powershell -ExecutionPolicy Bypass -File scripts/start-server.ps1
 ```
 
-脚本使用 `artifacts/v2/server/MyPan.Server.exe`，首次安装建议项目的 `data`，已安装则沿用 `server-settings.json` 中的存储路径。旧版 `artifacts/server/api-key.txt` 存在且新位置还没有密钥时，会复制原密钥。不会清空原数据。升级首次读取旧目录时自动备份旧 `catalog.json`；降级前须恢复成套数据备份，不能让旧程序直接写 V2 数据。
+脚本使用 `artifacts/v2/server/Yunsevo.Server.exe`，首次安装建议项目的 `data`，已安装则沿用 `server-settings.json` 中的存储路径。旧版 `artifacts/server/api-key.txt` 存在且新位置还没有密钥时，会复制原密钥。不会清空原数据。升级首次读取旧目录时自动备份旧 `catalog.json`；降级前须恢复成套数据备份，不能让旧程序直接写 V2 数据。
 
-打开 `http://127.0.0.1:5080`。全新部署按[安装向导](docs/first-install.md)设置管理员账号、密码和存储位置；已有部署沿用原账号，旧目录首次迁移的兼容管理员仍为 `admin`，初始密码为 API 密钥。管理员可在用户管理中重置用户密码；个人账户可点击右上角账户入口修改自己的密码。API 密钥登录保留为旧客户端的管理员兼容入口；普通用户应使用个人账号。迁移完旧客户端后，可设置 `MyPan__AllowLegacyApiKey=false` 并重启，关闭共享密钥入口。
+打开 `http://127.0.0.1:5080`。全新部署按[安装向导](docs/first-install.md)设置管理员账号、密码和存储位置；已有部署沿用原账号，旧目录首次迁移的兼容管理员仍为 `admin`，初始密码为 API 密钥。管理员可在用户管理中重置用户密码；个人账户可点击右上角账户入口修改自己的密码。API 密钥登录保留为旧客户端的管理员兼容入口；普通用户应使用个人账号。迁移完旧客户端后，可设置 `Yunsevo__AllowLegacyApiKey=false` 并重启，关闭共享密钥入口。
 
-新版桌面客户端：`artifacts/v2/desktop/MyPan.Desktop.exe`，也可通过 `powershell -ExecutionPolicy Bypass -File scripts/start-desktop.ps1` 打开。先登录，再在“同步任务”点击“创建”，选择已有服务器或添加服务器，然后选择云端文件夹、本地目录和下载方式。支持同时连接多个服务器、每台服务器添加多个独立任务；登录状态加密保存，下次启动自动恢复。云端列表标注“私有 / 公共 / 分配给我”和读写权限，个人根目录显示为 `/个人`。旧版 Win32 客户端另在 `artifacts/v2/windows-client`，用于兼容原 API 密钥配置。
+新版桌面客户端：`artifacts/v2/desktop/Yunsevo.Desktop.exe`，也可通过 `powershell -ExecutionPolicy Bypass -File scripts/start-desktop.ps1` 打开。先登录，再在“同步任务”点击“创建”，选择已有服务器或添加服务器，然后选择云端文件夹、本地目录和下载方式。支持同时连接多个服务器、每台服务器添加多个独立任务；登录状态加密保存，下次启动自动恢复。云端列表标注“私有 / 公共 / 分配给我”和读写权限，个人根目录显示为 `/个人`。旧版 Win32 客户端另在 `artifacts/v2/windows-client`，用于兼容原 API 密钥配置。
 
 若新版发布到了 `artifacts/v2-update`，先从托盘退出旧客户端并停止旧服务端，再运行 `powershell -ExecutionPolicy Bypass -File scripts/install-update.ps1` 安装。安装脚本备份被替换的程序文件，保留服务端数据、API 密钥及客户端配置，随后按上述命令重新启动服务端和客户端。
 
@@ -69,7 +67,7 @@ powershell -ExecutionPolicy Bypass -File scripts/start-server.ps1
 | --- | --- | --- |
 | WebDAV | `https://你的域名/dav/`，本机可用 `http://127.0.0.1:5080/dav/` | 云盘用户名 / 密码，Basic over HTTPS |
 | FTP | `127.0.0.1:2121`，UTF-8、被动模式 | 云盘用户名 / 密码 |
-| SMB 2/3 | TCP 1445，共享 `mypan`，关闭 SMB1 | 用户管理中“SMB 密码”生成的专用连接密码 |
+| SMB 2/3 | TCP 1445，共享 `yunsevo`，关闭 SMB1 | 用户管理中“SMB 密码”生成的专用连接密码 |
 
 协议访问共用云盘权限、条件写入、配额、版本和回收站，不直接共享 blob 存储目录。SMB 的密码为随机专用凭据，经 AES-GCM 加密保存在数据目录；网页登录密码始终只存 PBKDF2 哈希。停用用户立即阻止其新操作。SMB 专用密码重置会影响后续登录，已打开的句柄遵循现有操作的授权语义。
 
@@ -97,42 +95,42 @@ Windows 使用 Cloud Files API，在本地 NTFS 上提供资源管理器占位�
 
 ## Linux 无界面客户端
 
-`headless/MyPan.Headless` 无需桌面环境，支持常驻和 `--once`。配置参考 [packaging/linux/client.example.json](packaging/linux/client.example.json)，密码从 `MYPAN_PASSWORD` 或 `MYPAN_PASSWORD_FILE` 读取。服务用密码文件应限制为当前账户可读（0600）。
+`headless/Yunsevo.Headless` 无需桌面环境，支持常驻和 `--once`。配置参考 [packaging/linux/client.example.json](packaging/linux/client.example.json)，密码从 `YUNSEVO_PASSWORD` 或 `YUNSEVO_PASSWORD_FILE` 读取。服务用密码文件应限制为当前账户可读（0600）。
 
 ```bash
-export MYPAN_PASSWORD_FILE="$HOME/.config/mypan/password"
-/opt/mypan/headless/MyPan.Headless --config "$HOME/.config/mypan/client.json"
+export YUNSEVO_PASSWORD_FILE="$HOME/.config/yunsevo/password"
+/opt/yunsevo/headless/Yunsevo.Headless --config "$HOME/.config/yunsevo/client.json"
 # 查看等待确认的本地删除
-/opt/mypan/headless/MyPan.Headless --config "$HOME/.config/mypan/client.json" --list-deletions
+/opt/yunsevo/headless/Yunsevo.Headless --config "$HOME/.config/yunsevo/client.json" --list-deletions
 # 明确选择：cloud 删除云端；local 仅本地删除；defer 继续等待
-/opt/mypan/headless/MyPan.Headless --config "$HOME/.config/mypan/client.json" --resolve-delete "资料/a.txt" --decision local
+/opt/yunsevo/headless/Yunsevo.Headless --config "$HOME/.config/yunsevo/client.json" --resolve-delete "资料/a.txt" --decision local
 ```
 
-待确认文件在配置旁的 `.deletions.json`；未确认不会删除云端，决定只使用一次。提供 [systemd 用户服务模板](packaging/linux/mypan-sync.service) 和 [桌面入口](packaging/linux/mypan.desktop)，按实际安装路径修改后安装。
+待确认文件在配置旁的 `.deletions.json`；未确认不会删除云端，决定只使用一次。提供 [systemd 用户服务模板](packaging/linux/yunsevo-sync.service) 和 [桌面入口](packaging/linux/yunsevo.desktop)，按实际安装路径修改后安装。
 
 ## 连接协议和 TLS
 
 全新部署先进入[首次安装向导](docs/first-install.md)，设置管理员用户名、密码和存储绝对路径。安装完成后自动进入登录页，重启沿用 `server-settings.json`；已有数据的升级不重置管理员。配置文件随升级保留，不会被启动脚本的默认路径覆盖。
 
-服务端默认 HTTP 监听 `0.0.0.0:5080`，启动脚本也使用全部 IPv4 网卡。其他设备通过 `http://服务器IP:5080/` 打开登录页；仅限本机访问时可用 `scripts/start-server.ps1 -ListenAddress 127.0.0.1`。直接启动程序仍可通过 `ASPNETCORE_URLS` 覆盖监听地址。配置 HTTPS 证书后，默认 HTTPS 监听所有 IPv4/IPv6 网卡，`MyPan__ListenAddress` 可指定单个地址。端口仍需由部署环境的防火墙、路由或反向代理放行。
+服务端默认 HTTP 监听 `0.0.0.0:5080`，启动脚本也使用全部 IPv4 网卡。其他设备通过 `http://服务器IP:5080/` 打开登录页；仅限本机访问时可用 `scripts/start-server.ps1 -ListenAddress 127.0.0.1`。直接启动程序仍可通过 `ASPNETCORE_URLS` 覆盖监听地址。配置 HTTPS 证书后，默认 HTTPS 监听所有 IPv4/IPv6 网卡，`Yunsevo__ListenAddress` 可指定单个地址。端口仍需由部署环境的防火墙、路由或反向代理放行。
 
-登录页提供无需登录的客户端下载入口，只显示 `server/downloads` 中实际存在的已知发布包。运行 `scripts/publish.ps1` 或 `scripts/publish.sh` 会自动生成对应平台的桌面版、无界面版下载包；已有发布目录可用 `scripts/package-clients.ps1 -Runtime win-x64 -Output artifacts/v2` 重新打包。Windows 为 ZIP，Linux/macOS 为保留可执行权限的 tar.gz。部署服务端时保留 `downloads` 子目录，也可用 `MyPan__ClientDownloadsPath` 指向集中存放包的目录。将其他平台构建完成的包复制到该目录后，对应入口自动出现；不会显示尚未构建的平台。下载支持断点续传，打包仅包含运行文件和第三方许可。
+登录页提供无需登录的客户端下载入口，只显示 `server/downloads` 中实际存在的已知发布包。运行 `scripts/publish.ps1` 或 `scripts/publish.sh` 会自动生成对应平台的桌面版、无界面版下载包；已有发布目录可用 `scripts/package-clients.ps1 -Runtime win-x64 -Output artifacts/v2` 重新打包。Windows 为 ZIP，Linux/macOS 为保留可执行权限的 tar.gz。部署服务端时保留 `downloads` 子目录，也可用 `Yunsevo__ClientDownloadsPath` 指向集中存放包的目录。将其他平台构建完成的包复制到该目录后，对应入口自动出现；不会显示尚未构建的平台。下载支持断点续传，打包仅包含运行文件和第三方许可。
 
-Windows 桌面版下载后完整解压，运行 `MyPan.Desktop.exe`。客户端可使用受信任证书的 HTTPS 地址；可信局域网可直接使用 `http://服务器内网IP:5080`，无需调试转发。公网和域名连接要求 HTTPS。HTTP 不加密，仅用于可信内网。
+Windows 桌面版下载后完整解压，运行 `Yunsevo.Desktop.exe`。客户端可使用受信任证书的 HTTPS 地址；可信局域网可直接使用 `http://服务器内网IP:5080`，无需调试转发。公网和域名连接要求 HTTPS。HTTP 不加密，仅用于可信内网。
 
 客户端复用 HTTP 连接池，本地文件监听 + 服务端 SSE 持续推送变更，200 ms 合并事件，5 秒补查丢失事件和失败重试。网络断开自动重连，成功提交后才推送。文件内容仍通过流式 HTTP 上传/下载，使用 ETag 条件写入保护并发更新。
 
 HTTPS 时优先 HTTP/3（QUIC），不可用则协商 HTTP/2/1.1；HTTP/1.1 本身也支持连接复用。TLS 服务端设置：
 
 ```powershell
-$env:MyPan__CertificatePath='F:\certs\server.pfx'
-$env:MyPan__CertificatePassword='通过部署环境安全注入'
-$env:MyPan__ListenAddress='0.0.0.0'
-$env:MyPan__HttpsPort='5443'
-$env:MyPan__EnableHttp3='true'
+$env:Yunsevo__CertificatePath='F:\certs\server.pfx'
+$env:Yunsevo__CertificatePassword='通过部署环境安全注入'
+$env:Yunsevo__ListenAddress='0.0.0.0'
+$env:Yunsevo__HttpsPort='5443'
+$env:Yunsevo__EnableHttp3='true'
 ```
 
-证书配置后使用上述显式 HTTPS 端口，取代 `ASPNETCORE_URLS` 监听。客户端必须信任真实有效证书，不跳过校验。HTTP/3 需要相应系统 QUIC 支持及 UDP 端口畅通；反向代理终止 TLS 时，HTTP/3 由代理决定，还需禁用 SSE 缓冲。当前机器实际 HTTP/2 已通过验证，HTTP/3 强制连接因主机 UDP 路径不可达未验证成功，已验证可降级连接。SMB 网关通过 HTTPS 访问主服务端时也执行正常证书校验；可用 `MyPan__GatewayServerUrl` 指定其可达且可信的服务 URL。
+证书配置后使用上述显式 HTTPS 端口，取代 `ASPNETCORE_URLS` 监听。客户端必须信任真实有效证书，不跳过校验。HTTP/3 需要相应系统 QUIC 支持及 UDP 端口畅通；反向代理终止 TLS 时，HTTP/3 由代理决定，还需禁用 SSE 缓冲。当前机器实际 HTTP/2 已通过验证，HTTP/3 强制连接因主机 UDP 路径不可达未验证成功，已验证可降级连接。SMB 网关通过 HTTPS 访问主服务端时也执行正常证书校验；可用 `Yunsevo__GatewayServerUrl` 指定其可达且可信的服务 URL。
 
 ## 编译与发布
 
@@ -150,7 +148,7 @@ Linux/macOS 无需安装 PowerShell，也可直接运行 `bash scripts/publish.s
 
 ## 数据和边界
 
-未安装时直接运行服务端建议 EXE 旁 `data`，启动脚本建议项目 `data`，`MyPan__DataPath` 可设置初始建议值。安装后以 `server-settings.json` 中的路径为准。文件内容在 `blobs`，原始目录名在 `catalog.json` 和已提交的 `catalog.journal`。备份/迁移必须包含整个数据目录、`api-key.txt`，尤其是 SMB 加密密钥；不要手工把文件塞入 blobs，应通过网页或协议上传。同一个数据目录仅允许一个主服务端写入。
+未安装时直接运行服务端建议 EXE 旁 `data`，启动脚本建议项目 `data`，`Yunsevo__DataPath` 可设置初始建议值。安装后以 `server-settings.json` 中的路径为准。文件内容在 `blobs`，原始目录名在 `catalog.json` 和已提交的 `catalog.journal`。备份/迁移必须包含整个数据目录、`api-key.txt`，尤其是 SMB 加密密钥；不要手工把文件塞入 blobs，应通过网页或协议上传。同一个数据目录仅允许一个主服务端写入。
 
 首次打开旧版目录时，会在数据目录生成 `catalog.json.v1-backup-*` 原始目录备份，再补充账户、权限、版本和会话字段，保留文件 ID、路径、版本和回收站记录。初始 `admin` 密码使用现有 API 密钥。已包含新版字段但字段缺失、为 null 或用户列表为空的目录会停止加载并报告原因，避免覆盖已有账户或权限。
 
@@ -164,4 +162,4 @@ Linux/macOS 无需安装 PowerShell，也可直接运行 `bash scripts/publish.s
 
 Windows 上可用 `powershell -ExecutionPolicy Bypass -File scripts/test.ps1 -Native` 重跑；加 `-Browser` 执行网页检查，需要 Node 24、Edge 和 PATH 中的 ffmpeg。测试均创建独立 `.test-data` 目录，不使用正式云盘数据。
 
-旧目录升级回归可单独运行 `dotnet run --project tests/MyPan.StoreTests -c Release -- --native`，覆盖旧文件和回收站恢复、原始目录备份、重启登录、损坏目录保护、增量日志恢复及启动脚本实际启动 AOT 服务端。本次安装的 AOT 包通过 61 项隔离升级与启动脚本检查；此前现有数据隔离副本的 59 项回归证据也保留在验证报告的历史字段中。
+旧目录升级回归可单独运行 `dotnet run --project tests/Yunsevo.StoreTests -c Release -- --native`，覆盖旧文件和回收站恢复、原始目录备份、重启登录、损坏目录保护、增量日志恢复及启动脚本实际启动 AOT 服务端。本次安装的 AOT 包通过 61 项隔离升级与启动脚本检查；此前现有数据隔离副本的 59 项回归证据也保留在验证报告的历史字段中。

@@ -1,9 +1,9 @@
 # 首次安装
 
-新服务器运行 `server/MyPan.Server.exe`（Linux/macOS 为 `MyPan.Server`），或在项目目录运行 `scripts/start-server.ps1`。默认监听所有 IPv4 网卡的 HTTP 5080 端口。已有 `catalog.json` 的部署直接加载原账号和文件，不会进入向导或重置管理员。
+新服务器运行 `server/Yunsevo.Server.exe`（Linux/macOS 为 `Yunsevo.Server`），或在项目目录运行 `scripts/start-server.ps1`。默认监听所有 IPv4 网卡的 HTTP 5080 端口。已有 `catalog.json` 的部署直接加载原账号和文件，不会进入向导或重置管理员。
 
 1. 浏览器打开 `http://服务器IP:5080/`。
-2. 从服务端程序目录的 `setup-code.txt` 复制一次性安装码，点击“验证并继续”。`MyPan__ApiKeyFile` 或 `MyPan__InstallationFile` 指定其他目录时，安装码位于该安装配置所在目录；启动日志会显示文件位置。
+2. 从服务端程序目录的 `setup-code.txt` 复制一次性安装码，点击“验证并继续”。`Yunsevo__ApiKeyFile` 或 `Yunsevo__InstallationFile` 指定其他目录时，安装码位于该安装配置所在目录；启动日志会显示文件位置。
 3. 设置管理员用户名、密码及确认密码。用户名为 3–64 位英文字母、数字、点、横线或下划线，密码为 12–256 个字符。
 4. 选择服务端磁盘上的空文件夹绝对路径。例如 Windows 使用 `D:\YunsevoData`，Linux 使用 `/srv/yunsevo/data`。程序会检查目录是否可写，不会接管非空目录或符号链接。路径指的是服务器磁盘，而非浏览器所在电脑。
 5. 完成后服务在同一进程中自动启动并转到登录页。使用刚设置的管理员账号登录；其私有文件夹同时创建。
@@ -12,7 +12,7 @@
 
 ## 保存路径与重启
 
-初始化结果写入程序目录的 `server-settings.json`，只保存格式版本、存储绝对路径和完成标记。安装后以文件中的路径为准，启动脚本不会覆盖它。`MyPan__DataPath` 为没有安装配置时的默认路径；脚本默认建议使用项目的 `data`。自定义安装配置文件位置用 `MyPan__InstallationFile`。默认配置与 API 密钥同目录。
+初始化结果写入程序目录的 `server-settings.json`，只保存格式版本、存储绝对路径和完成标记。安装后以文件中的路径为准，启动脚本不会覆盖它。`Yunsevo__DataPath` 为没有安装配置时的默认路径；脚本默认建议使用项目的 `data`。自定义安装配置文件位置用 `Yunsevo__InstallationFile`。默认配置与 API 密钥同目录。
 
 同一台机器运行多个服务端实例时，每个实例分别配置安装文件、API 密钥文件、存储路径和监听端口，避免两个实例共用配置。客户端可以同时连接这些独立服务器。
 
@@ -25,12 +25,12 @@
 可通过部署环境显式提供以下配置，不需要浏览器向导：
 
 ```powershell
-$env:MyPan__UnattendedSetup = 'true'
-$env:MyPan__AdminUsername = 'cloudadmin'
-$env:MyPan__AdminPassword = '通过部署环境安全注入至少12位密码'
-$env:MyPan__DataPath = 'D:\YunsevoData'
+$env:Yunsevo__UnattendedSetup = 'true'
+$env:Yunsevo__AdminUsername = 'cloudadmin'
+$env:Yunsevo__AdminPassword = '通过部署环境安全注入至少12位密码'
+$env:Yunsevo__DataPath = 'D:\YunsevoData'
 ```
 
-未指定管理员密码时，仅在同时显式配置 `MyPan__ApiKey` 的情况下允许将该强密钥用作初始密码，供兼容部署和自动化测试使用；随机生成的密钥不会自动启用无人值守安装。已安装服务不再读取这些初始化账号参数。
+未指定管理员密码时，仅在同时显式配置 `Yunsevo__ApiKey` 的情况下允许将该强密钥用作初始密码，供兼容部署和自动化测试使用；随机生成的密钥不会自动启用无人值守安装。已安装服务不再读取这些初始化账号参数。
 
 安装向导与正式服务共用 HTTPS 监听配置。跨设备客户端登录需要可信 HTTPS，证书配置见 [README](../README.md#连接协议和-tls)。

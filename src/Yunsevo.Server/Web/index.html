@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>沄序文件云 · Yunsevo</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%230b8b90%22/%3E%3Cpath d=%22m16 6 10 5-10 5-10-5Zm-10 10 10 5 10-5M6 21l10 5 10-5%22 fill=%22none%22 stroke=%22white%22 stroke-width=%221.6%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/assets/app.js" defer></script>
+  <script src="/assets/admin.js" defer></script>
+</head>
+<body>
+  <svg class="symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></symbol><symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-3a7 7 0 0 1 14 0v3m0-17a4 4 0 0 1 0 8m4 9v-3a7 7 0 0 0-3-6"/></symbol><symbol id="i-menu" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5h6l2 2h10v13H3Z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M5.5 7a8 8 0 0 1 14 2M4.5 15a8 8 0 0 0 14 2"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5Zm9 0v6h5M8 14h8m-8 3h6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v13m-5-5 5 5 5-5M4 17v4h16v-4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="8" r="5"/><path d="m12 12 9 9m-5-5 3-3m0 6 3-3"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 4H4v16h5m-1-8h13m-5-5 5 5-5 5"/></symbol>
+  </svg>
+
+  <section id="session-loading" class="session-loading" role="status"><span class="brand-mark">沄</span><p id="session-message">正在恢复你的文件空间…</p><button id="session-retry" class="secondary" type="button" hidden>重新连接</button></section>
+  <main id="login-view" class="login-view" hidden>
+    <section class="welcome">
+      <a class="brand" href="/" aria-label="沄序 首页"><span class="brand-mark"><svg><use href="#i-cloud"/></svg></span> 沄序<span class="brand-tag">YUNSEVO</span></a>
+      <div class="welcome-copy"><p class="eyebrow">YUNSEVO · FILE WORKSPACE</p><h1>文件有序，<br>协作从容。</h1><p>上传、整理和查找你的文件。<br>连接桌面客户端，让云端文件出现在资源管理器中。</p>
+        <div class="welcome-card"><span class="file-icon folder"><svg><use href="#i-folder"/></svg></span><div><strong>只在需要时下载</strong><span>网页上传 · 客户端自动发现 · 打开即用</span></div><span class="cloud-badge"><svg><use href="#i-cloud"/></svg></span></div>
+      </div>
+      <p class="welcome-footer">沄序 · 企业文件协作空间</p>
+    </section>
+    <section class="login-panel">
+      <form id="login-form" class="login-card">
+        <span class="login-key"><svg><use href="#i-key"/></svg></span>
+        <p class="eyebrow">欢迎回来</p><h2>连接你的云盘</h2><p class="muted">使用个人账号登录，访问你的文件空间。</p>
+        <details class="advanced-login"><summary>高级接入方式</summary><label class="login-mode"><input id="account-mode" type="checkbox" checked> 使用用户名和密码登录</label></details>
+        <div id="account-fields"><label for="login-username">用户名</label><input id="login-username" autocomplete="username" required placeholder="输入你的用户名"><label for="login-password">密码</label><input id="login-password" type="password" autocomplete="current-password" required></div>
+        <div id="key-fields" hidden>
+        <label for="api-key">API 密钥</label>
+        <input id="api-key" name="api-key" type="password" minlength="32" autocomplete="off" placeholder="粘贴 api-key.txt 中的密钥" spellcheck="false">
+        </div><p class="field-help">首次使用请联系组织管理员获取账号。管理员初始密码及兼容接入请参考部署说明。</p>
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <button id="login-button" class="primary login-submit" type="submit">进入云盘 <span aria-hidden="true">→</span></button>
+        <p class="login-note">会话有效期内保留登录状态，退出登录后清除。</p>
+        <section class="client-downloads" aria-labelledby="client-download-title">
+          <div class="download-heading"><h3 id="client-download-title">客户端下载</h3><span>无需登录</span></div>
+          <p class="field-help">在电脑上同步文件，随时访问你的云端空间。</p>
+          <!--CLIENT_DOWNLOADS-->
+          <p class="download-help">下载后完整解压再运行。跨设备连接请使用 HTTPS 服务器地址。</p>
+        </section>
+      </form>
+    </section>
+  </main>
+
+  <div id="app-view" class="app-layout" hidden>
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="沄序 首页"><span class="brand-mark"><svg><use href="#i-cloud"/></svg></span> 沄序<span class="brand-tag">YUNSEVO</span></a>
+      <p class="nav-label">工作空间</p>
+      <nav aria-label="主导航">
+        <button id="nav-files" class="nav-item selected" aria-current="page"><svg><use href="#i-folder"/></svg>我的文件<span id="file-count" class="nav-count">0</span></button>
+        <button id="nav-trash" class="nav-item"><svg><use href="#i-trash"/></svg>回收站</button>
+        <p id="admin-nav-label" class="nav-label" hidden>管理控制台</p><button id="nav-admin" class="nav-item" hidden><svg><use href="#i-users"/></svg>用户管理</button>
+        <button id="nav-groups" class="nav-item" hidden><svg><use href="#i-users"/></svg>用户组管理</button>
+        <button id="nav-settings" class="nav-item" hidden><svg><use href="#i-refresh"/></svg>服务设置</button>
+        <button id="nav-audit" class="nav-item" hidden><svg><use href="#i-file"/></svg>审计日志</button>
+      </nav>
+      <div class="sidebar-bottom"><div class="connected"><span class="status-dot"></span>已连接到服务端</div><p>在这里上传，<br>在你的设备上随时打开。</p><button id="logout" class="logout"><svg><use href="#i-logout"/></svg>断开连接</button></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><button id="menu-toggle" class="icon-button mobile-menu" aria-label="打开导航"><svg><use href="#i-menu"/></svg></button><span class="topbar-label">沄序文件云</span><div class="topbar-right"><span class="connection-label"><span class="status-dot"></span>已连接</span><button id="logout-top" class="icon-button" title="断开连接" aria-label="断开连接"><svg><use href="#i-logout"/></svg></button><button id="account-security" class="account-chip" title="账户安全"><span class="avatar">Y</span><span id="account-display">账户</span></button></div></header>
+      <main class="content" id="drop-area">
+        <div class="page-heading"><div><p class="eyebrow">MY WORKSPACE</p><h1 id="page-title">我的文件</h1><p id="page-description" class="muted">让文件井然有序，让每台设备保持连接。</p></div><div class="heading-actions" id="file-actions"><button id="new-folder" class="secondary"><span aria-hidden="true">＋</span> 新建文件夹</button><button id="upload-button" class="primary"><svg><use href="#i-upload"/></svg>上传文件</button></div></div>
+        <section class="summary" aria-label="云盘概况"><div class="summary-icon"><svg><use href="#i-cloud"/></svg></div><div class="summary-copy"><strong>你的文件，已在云端就绪</strong><span>桌面客户端连接后自动同步文件列表，支持按需下载。</span></div><div class="summary-stat"><strong id="total-files">0</strong><span>个文件</span></div><div class="summary-stat"><strong id="total-size">0 B</strong><span>云端文件大小</span></div></section>
+        <section class="file-panel" aria-label="文件列表">
+          <div class="file-toolbar"><nav id="breadcrumbs" class="breadcrumbs" aria-label="目录路径"></nav><div class="table-tools"><button id="copy-directory" class="text-button copy-directory" hidden>复制目录名</button><label class="search"><svg><use href="#i-search"/></svg><input id="search" type="search" placeholder="搜索当前目录及子目录" aria-label="搜索文件"></label><button id="refresh" class="icon-button" title="刷新文件列表" aria-label="刷新文件列表"><svg><use href="#i-refresh"/></svg></button></div></div>
+          <div id="loading" class="loading" role="status" hidden>正在加载文件…</div>
+          <div class="table-scroll"><table><thead><tr><th scope="col"><button class="sort" data-sort="name">名称 <span id="sort-name">↑</span></button></th><th scope="col"><button id="date-sort" class="sort" data-sort="modified"><span id="date-label">修改时间</span> <span id="sort-modified"></span></button></th><th scope="col"><button class="sort" data-sort="size">大小 <span id="sort-size"></span></button></th><th class="trash-column" hidden>删除人</th><th class="trash-column" hidden>设备名称</th><th class="trash-column" hidden>来源 / IP</th><th scope="col" class="actions-heading">操作</th></tr></thead><tbody id="file-list"></tbody></table></div>
+          <div id="empty-state" class="empty-state" hidden><span class="empty-icon"><svg><use href="#i-folder"/></svg></span><h2 id="empty-title">这里还是空的</h2><p id="empty-description">上传第一个文件，或将文件拖到这里。</p><button id="empty-upload" class="secondary">上传文件</button></div>
+          <footer class="list-footer"><span id="visible-count">0 个项目</span><span id="list-hint" hidden></span><div id="files-pager" class="pager" aria-label="文件分页"></div></footer>
+        </section>
+
+        <div id="drop-overlay" class="drop-overlay" hidden><svg><use href="#i-upload"/></svg><strong>松开鼠标，上传到当前文件夹</strong><span>文件会自动出现在已连接的桌面客户端中</span></div>
+      </main>
+      <main id="management-view" class="management-view" hidden><section hidden id="admin-dialog" class="wide-dialog"><div class="dialog-heading"><h2 id="admin-title">用户管理</h2></div>
+    <p class="muted">新用户会获得私有目录“个人/用户名”；所有已登录用户可以访问“公共”目录。</p>
+    <div class="admin-columns" id="admin-columns"><section id="users-section"><h3>用户</h3><div class="admin-list-panel"><div class="list-search"><input id="users-query" type="search" placeholder="搜索用户名、姓名"><button id="create-user" class="primary" type="button">＋ 新建用户</button></div><div id="users-list" class="management-list"></div><div id="users-pager" class="pager"></div></div><form id="user-form"><h3 id="user-form-title">新建用户</h3>
+      <label for="user-name">用户名</label><input id="user-name" required minlength="3" maxlength="64" autocomplete="off">
+      <label for="user-display">显示名称</label><input id="user-display" required maxlength="100">
+      <label for="user-password">密码（编辑时留空不修改）</label><input id="user-password" type="password" minlength="12" autocomplete="new-password">
+      <label class="check-line"><input id="user-admin" type="checkbox">管理员</label><label class="check-line"><input id="user-disabled" type="checkbox">停用账户并注销会话</label>
+      <div class="dialog-actions"><button id="new-user" class="secondary" type="button">新建</button><button class="primary" type="submit">保存用户</button></div></form></section>
+    <section id="groups-section"><h3>用户组</h3><div class="admin-list-panel"><div class="list-search"><input id="groups-query" type="search" placeholder="搜索用户组"><button id="create-group" class="primary" type="button">＋ 新建用户组</button></div><div id="groups-list" class="management-list"></div><div id="groups-pager" class="pager"></div></div><form id="group-form"><h3>用户组设置</h3><label for="group-name">用户组名称</label><input id="group-name" required maxlength="100">
+      <label for="group-members">成员（按住 Ctrl / Command 多选）</label><select id="group-members" multiple size="7"></select>
+      <div class="dialog-actions"><button id="new-group" class="secondary" type="button">新建</button><button class="primary" type="submit">保存用户组</button></div></form></section></div><p id="admin-error" class="form-error" role="alert" hidden></p></section><section hidden id="settings-dialog" class="wide-dialog"><div class="dialog-heading"><h2>服务设置 · 文件协议</h2></div>
+    <form id="settings-form"><p class="muted">所有协议共用用户权限、配额、版本历史和回收站。默认关闭；保存后立即应用。</p>
+      <label class="check-line"><input id="setting-webdav" type="checkbox">启用 WebDAV · /dav/ · 云盘用户名和密码</label>
+      <label class="check-line"><input id="setting-ftp" type="checkbox">启用 FTP · UTF-8 / 被动模式 · 云盘用户名和密码</label>
+      <label class="check-line"><input id="setting-smb" type="checkbox">启用 SMB 2/3 · 共享名 yunsevo · 用户专用 SMB 密码</label>
+      <div class="form-grid"><div><label for="setting-address">FTP / SMB 监听 IP</label><input id="setting-address" required value="127.0.0.1"></div><div><label for="setting-ftp-port">FTP 端口</label><input id="setting-ftp-port" type="number" min="1" max="65535" required value="2121"></div><div><label for="setting-smb-port">SMB 端口</label><input id="setting-smb-port" type="number" min="1" max="65535" required value="1445"></div></div>
+      <p class="field-help">FTP 为明文协议，建议限本机或可信内网。SMB 默认 1445，Linux/macOS 可指定端口；Windows 资源管理器通常需要 445，可在空闲的主机上设置。FTP 被动传输还需允许动态数据端口。</p>
+      <p id="protocol-status" class="muted"></p><p id="settings-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button class="primary" type="submit">保存并应用</button></div>
+    </form><section class="backup-panel"><h3>工程拍摄 · 地址与天气</h3>
+      <form id="environment-form"><label class="check-line"><input id="environment-enabled" type="checkbox">启用地址与天气查询</label>
+      <div class="form-grid"><div><label for="environment-address">地址服务</label><select id="environment-address"><option value="amap">高德地图</option><option value="photon">Photon / OpenStreetMap（测试）</option><option value="disabled">关闭</option></select></div><div><label for="environment-weather">天气服务</label><select id="environment-weather"><option value="amap">高德天气</option><option value="met-no">MET Norway（预报）</option><option value="disabled">关闭</option></select></div>
+      <div><label for="environment-key">高德 Web 服务 Key</label><input id="environment-key" type="password" autocomplete="new-password" placeholder="留空保留现有 Key"><span id="environment-key-status" class="field-help"></span></div><div><label for="environment-cache">查询缓存（分钟）</label><input id="environment-cache" type="number" min="1" max="60" required value="10"></div>
+      <div><label for="environment-photon">Photon 服务地址</label><input id="environment-photon" type="url" required></div><div><label for="environment-contact">项目联系网址（上游请求标识）</label><input id="environment-contact" type="url" required></div></div>
+      <label class="check-line"><input id="environment-clear-key" type="checkbox">清除已保存的高德 Key</label>
+      <p class="field-help">Key 仅在服务端加密存储。手机开启对应水印时才查询，定位坐标会发送到所选服务商。高德使用 GPS 坐标转换后查询；天气保留来源与数据时间，查询失败不会填入虚假信息。</p>
+      <p class="field-help">免费测试：Photon 公共服务限制请求频率；MET Norway 提供预报数据（CC BY 4.0）。生产环境请按服务商条款配置容量与联系信息。</p>
+      <p id="environment-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button type="submit" class="primary">保存地址与天气设置</button></div></form>
+    </section><section class="backup-panel"><h3>迁移与备份</h3><p>一键导出文件、历史版本、回收站、账户与权限、协议和地址天气配置及审计日志，附带逐文件 SHA-256 校验清单。</p><p class="field-help">备份包含服务密钥与解密密钥，请妥善保存。生成期间同步写入会排队；服务端需有足够的临时磁盘空间。恢复后设备需重新登录，HTTPS 证书和监听地址需单独配置。</p><button id="download-backup" class="primary" type="button">下载迁移备份（ZIP）</button><p id="backup-status" class="field-help" role="status"></p></section></section><section hidden id="audit-dialog" class="wide-dialog"><div class="dialog-heading"><h2>审计日志</h2></div>
+    <div class="audit-filters"><input id="audit-user" placeholder="按用户名筛选" aria-label="筛选用户"><select id="audit-kind" aria-label="筛选操作"><option value="all">全部操作</option><option value="trash">回收站 · 删除 / 恢复 / 永久删除</option><option value="accounts">用户 / 用户组</option><option value="settings">设置 / 文件夹权限</option></select><button id="audit-refresh" class="secondary">刷新记录</button></div>
+    <p class="muted">记录网页、同步 API、WebDAV、FTP 和 SMB 的写入及登录结果；包含操作失败记录。</p><div class="table-scroll"><table><thead><tr><th>时间 / 用户</th><th>操作 / 对象</th><th>结果 / 来源</th></tr></thead><tbody id="audit-list"></tbody></table></div><footer class="list-footer"><span id="audit-count"></span><div id="audit-pager" class="pager"></div></footer></section></main>
+    </div>
+  </div>
+  <input id="file-input" type="file" multiple hidden>
+  <section id="upload-panel" class="upload-panel" aria-label="上传任务" hidden><header><strong id="upload-title">上传文件</strong><button id="cancel-upload" class="text-button">取消剩余</button><button id="close-uploads" class="text-button" hidden>收起</button></header><ol id="upload-list"></ol></section>
+  <dialog id="name-dialog"><form id="name-form"><h2 id="name-title">新建文件夹</h2><label for="entry-name">名称</label><input id="entry-name" required maxlength="240" autocomplete="off"><p id="name-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" id="name-cancel" class="secondary">取消</button><button id="name-submit" type="submit" class="primary">确定</button></div></form></dialog>
+
+  <dialog id="policy-dialog" class="wide-dialog"><form id="policy-form"><div class="dialog-heading"><h2 id="policy-title">文件夹权限与容量</h2><button class="text-button" type="button" data-close="policy-dialog">关闭</button></div>
+    <p id="policy-usage" class="muted"></p><div class="form-grid"><div><label for="policy-owner">所有者</label><select id="policy-owner"></select></div><div><label for="policy-visibility">访问范围</label><select id="policy-visibility"><option value="private">私有：仅所有者和管理员</option><option value="public">公用：所有已登录用户</option><option value="restricted">指定用户 / 用户组</option></select></div>
+    <div><label for="policy-public">公用目录权限</label><select id="policy-public"><option value="1">只读</option><option value="3">读写</option></select></div><div><label for="policy-quota">容量上限（GiB，留空不限本层）</label><input id="policy-quota" type="number" min="0.000000001" step="any" placeholder="例如 10"></div>
+    <div><label for="policy-versions">保留版本总数（含当前版本）</label><input id="policy-versions" type="number" min="1" max="1000" placeholder="留空继承上级，默认 10"></div></div>
+    <p class="field-help">配额统计此目录下当前文件、历史版本和回收站。私有目录不向其他人开放；指定授权在“公用”或“指定用户 / 用户组”模式生效。子目录继承最近一层设置。</p>
+    <h3>指定授权</h3><div id="grant-list"></div><button id="add-grant" class="secondary" type="button">＋ 添加用户或用户组</button>
+    <p id="policy-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button id="inherit-policy" type="button" class="secondary">恢复继承上级</button><button id="policy-save" class="primary" type="submit">保存设置</button></div></form></dialog>
+  <dialog id="versions-dialog" class="wide-dialog"><div class="dialog-heading"><h2 id="versions-title">文件版本</h2><button class="text-button" data-close="versions-dialog">关闭</button></div><div id="version-list" class="management-list"></div><div id="versions-pager" class="pager"></div></dialog>
+  <dialog id="preview-dialog" class="preview-dialog"><div class="dialog-heading"><h2 id="preview-title">预览</h2><button class="text-button" data-close="preview-dialog">关闭</button></div><div id="preview-origin" class="field-help"></div><div id="preview-content"></div></dialog>
+
+
+  <dialog id="smb-password-dialog"><div class="dialog-heading"><h2>用户 SMB 连接密码</h2><button class="text-button" data-close="smb-password-dialog">关闭</button></div><p>此密码仅用于 SMB。重置后旧密码失效；请复制后交给对应用户。</p><input id="smb-password-value" readonly aria-label="SMB 连接密码"><p id="smb-password-user" class="muted"></p></dialog>
+  <dialog id="password-dialog"><form id="password-form"><div class="dialog-heading"><h2>账户安全</h2><button type="button" class="text-button" data-close="password-dialog">关闭</button></div><p class="muted">修改密码后，所有已登录设备都需重新登录。</p><label for="password-current">当前密码</label><input id="password-current" type="password" required autocomplete="current-password"><label for="password-new">新密码</label><input id="password-new" type="password" minlength="12" maxlength="256" required autocomplete="new-password"><label for="password-confirm">确认新密码</label><input id="password-confirm" type="password" minlength="12" maxlength="256" required autocomplete="new-password"><p id="password-error" class="form-error" hidden></p><div class="dialog-actions"><button class="primary" type="submit">保存新密码</button></div></form></dialog>
+  <dialog id="reset-dialog"><form id="reset-form"><div class="dialog-heading"><h2>重置登录密码</h2><button type="button" class="text-button" data-close="reset-dialog">关闭</button></div><p id="reset-target" class="muted"></p><label for="reset-password">新密码</label><input id="reset-password" type="password" minlength="12" maxlength="256" autocomplete="new-password" placeholder="留空则生成随机密码"><p class="field-help">重置会注销该用户所有设备的登录。生成的密码仅本次显示，请通过可信方式交给用户。</p><p id="reset-error" class="form-error" hidden></p><div class="dialog-actions"><button class="primary" type="submit">确认重置</button></div></form><div id="reset-result" hidden><h3>密码已重置</h3><input id="reset-result-value" readonly aria-label="新登录密码"><p class="field-help">关闭后不再显示。</p><div class="dialog-actions"><button type="button" class="primary" data-close="reset-dialog">完成并关闭</button></div></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

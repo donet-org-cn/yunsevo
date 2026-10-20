@@ -1,6 +1,6 @@
 # 沄序 Drive · 桌面客户端
 
-完整解压后运行 `MyPan.Desktop.exe`（Windows）、`./MyPan.Desktop`（Linux），或将 `MyPan.app` 放入“应用程序”（macOS）。无需安装 .NET；请保留原生图形库、许可证和其他附属文件。
+完整解压后运行 `Yunsevo.Desktop.exe`（Windows）、`./Yunsevo.Desktop`（Linux），或将 `Yunsevo.app` 放入“应用程序”（macOS）。无需安装 .NET；请保留原生图形库、许可证和其他附属文件。
 
 先登录，再点击“创建”，可添加多个服务器和多个同步任务，选择授权的云端目录和本地目录。登录状态加密保存在本机，下次启动自动恢复。跨设备登录要求受信任证书的 HTTPS；HTTP 仅允许本机回环地址。
 

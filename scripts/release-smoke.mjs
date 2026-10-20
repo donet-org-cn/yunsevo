@@ -15,8 +15,8 @@ const root = path.resolve('.test-data', 'release-' + rid + '-' + Date.now());
 await mkdir(root, { recursive: true });
 const checks = [], extension = rid.startsWith('win-') ? '.exe' : '';
 const executable = role => {
-  const bundle = path.join(base, 'desktop', 'MyPan.app', 'Contents', 'MacOS', 'MyPan.Desktop');
-  return role === 'Desktop' && rid.startsWith('osx-') && existsSync(bundle) ? bundle : path.join(base, role.toLowerCase(), 'MyPan.' + role + extension);
+  const bundle = path.join(base, 'desktop', 'Yunsevo.app', 'Contents', 'MacOS', 'Yunsevo.Desktop');
+  return role === 'Desktop' && rid.startsWith('osx-') && existsSync(bundle) ? bundle : path.join(base, role.toLowerCase(), 'Yunsevo.' + role + extension);
 };
 const assert = (condition, name) => { if (!condition) throw new Error(name); checks.push(name); console.log('PASS: ' + name); };
 for (const role of ['Server', 'Desktop', 'Headless']) {
@@ -34,9 +34,9 @@ const socket = createServer(); await new Promise(resolve => socket.listen(0, '12
 const port = socket.address().port; await new Promise(resolve => socket.close(resolve));
 const url = 'http://127.0.0.1:' + port, password = randomBytes(24).toString('hex');
 const env = { ...process.env };
-for (const key of Object.keys(env)) if (key.toLowerCase().startsWith('mypan__') || key.startsWith('MYPAN_')) delete env[key];
-Object.assign(env, { ASPNETCORE_URLS: url, MyPan__UnattendedSetup: 'true', MyPan__AdminUsername: 'releaseadmin', MyPan__AdminPassword: password,
-  MyPan__DataPath: path.join(root, 'data'), MyPan__ApiKeyFile: path.join(root, 'api-key.txt'), MyPan__InstallationFile: path.join(root, 'server-settings.json'), Logging__LogLevel__Default: 'Warning' });
+for (const key of Object.keys(env)) if (key.toLowerCase().startsWith('yunsevo__') || key.startsWith('YUNSEVO_')) delete env[key];
+Object.assign(env, { ASPNETCORE_URLS: url, Yunsevo__UnattendedSetup: 'true', Yunsevo__AdminUsername: 'releaseadmin', Yunsevo__AdminPassword: password,
+  Yunsevo__DataPath: path.join(root, 'data'), Yunsevo__ApiKeyFile: path.join(root, 'api-key.txt'), Yunsevo__InstallationFile: path.join(root, 'server-settings.json'), Logging__LogLevel__Default: 'Warning' });
 let serverLog = '';
 const server = spawn(executable('Server'), [], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
 server.stdout.on('data', b => serverLog += b); server.stderr.on('data', b => serverLog += b);
@@ -71,20 +71,20 @@ try {
   assert(await (await fetch(url + '/api/content/' + entry.id, { headers })).text() === payload, 'Native server downloads the exact stored bytes');
   const local = path.join(root, 'headless-files'), config = path.join(root, 'client.json');
   await writeFile(config, JSON.stringify({ server: url, username: 'releaseadmin', remoteDirectory: folder, syncRoot: local }));
-  await run(executable('Headless'), ['--config', config, '--once'], { MYPAN_PASSWORD: password });
+  await run(executable('Headless'), ['--config', config, '--once'], { YUNSEVO_PASSWORD: password });
   assert(await readFile(path.join(local, 'cloud.txt'), 'utf8') === payload, 'Native headless client authenticates and downloads');
   await writeFile(path.join(local, 'local.txt'), 'headless bidirectional upload');
-  await run(executable('Headless'), ['--config', config, '--once'], { MYPAN_PASSWORD: password });
+  await run(executable('Headless'), ['--config', config, '--once'], { YUNSEVO_PASSWORD: password });
   const catalog = await (await fetch(url + '/api/entries', { headers })).json();
   const uploaded = catalog.entries.find(x => x.path === folder + '/local.txt');
   assert(uploaded && await (await fetch(url + '/api/content/' + uploaded.id, { headers })).text() === 'headless bidirectional upload', 'Native headless client uploads exact local bytes');
   const desktopLocal = path.join(root, 'desktop-files');
-  await run(executable('Desktop'), ['--probe', '--server', url, '--root', desktopLocal, '--remote-dir', folder], { MYPAN_USERNAME: 'releaseadmin', MYPAN_PASSWORD: password });
+  await run(executable('Desktop'), ['--probe', '--server', url, '--root', desktopLocal, '--remote-dir', folder], { YUNSEVO_USERNAME: 'releaseadmin', YUNSEVO_PASSWORD: password });
   assert(await readFile(path.join(desktopLocal, 'cloud.txt'), 'utf8') === payload, 'Native desktop binary authenticates and synchronizes without a GUI');
   const desktopHome = path.join(root, 'desktop-ui');
   const command = rid.startsWith('linux-') ? 'xvfb-run' : executable('Desktop');
   const args = rid.startsWith('linux-') ? ['-a', executable('Desktop'), '--smoke'] : ['--smoke'];
-  await run(command, args, { MYPAN_DESKTOP_HOME: desktopHome });
+  await run(command, args, { YUNSEVO_DESKTOP_HOME: desktopHome });
   const screenshot = await readFile(path.join(desktopHome, 'window.png'));
   assert(screenshot.subarray(0, 8).toString('hex') === '89504e470d0a1a0a' && screenshot.length > 1000, 'Avalonia desktop starts, renders a real window and shuts down');
   const report = { rid, checkedAt: new Date().toISOString(), checks, gui: 'Real native Avalonia login window rendered', sync: 'Native server plus headless and desktop synchronization smoke', placeholders: rid.startsWith('win-') ? 'Not exercised by this CI smoke; separate Windows CFAPI regression required' : 'Not implemented; full local copies', signing: 'No commercial signing or Apple notarization', binaries: {} };

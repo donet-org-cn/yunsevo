@@ -7,7 +7,7 @@ import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
 
-const workspace = process.cwd(), serial = process.env.MYPAN_ANDROID_SERIAL ?? 'emulator-5554';
+const workspace = process.cwd(), serial = process.env.YUNSEVO_ANDROID_SERIAL ?? 'emulator-5554';
 if (!serial.startsWith('emulator-')) throw new Error('This destructive fixture reset is restricted to an emulator');
 const adbPath = path.resolve('.test-data/android/sdk/platform-tools/adb.exe');
 const root = path.resolve('.test-data/android-ui-' + new Date().toISOString().replace(/[:.]/g, '-'));
@@ -73,10 +73,10 @@ const socket = createServer(); await new Promise(resolve => socket.listen(0, '12
 const port = socket.address().port; await new Promise(resolve => socket.close(resolve));
 const url = 'http://127.0.0.1:' + port, ownerPassword = randomBytes(24).toString('hex'), password = randomBytes(20).toString('hex');
 const env = { ...process.env };
-for (const key of Object.keys(env)) if (key.toLowerCase().startsWith('mypan__')) delete env[key];
-Object.assign(env, { ASPNETCORE_URLS: url, MyPan__UnattendedSetup: 'true', MyPan__AdminUsername: 'mobileadmin', MyPan__AdminPassword: ownerPassword,
-  MyPan__DataPath: path.join(root, 'server'), MyPan__ApiKeyFile: path.join(root, 'key.txt'), MyPan__InstallationFile: path.join(root, 'settings.json'), Logging__LogLevel__Default: 'Warning' });
-const server = spawn(path.resolve('artifacts/mobile-update/server/MyPan.Server.exe'), [], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+for (const key of Object.keys(env)) if (key.toLowerCase().startsWith('yunsevo__')) delete env[key];
+Object.assign(env, { ASPNETCORE_URLS: url, Yunsevo__UnattendedSetup: 'true', Yunsevo__AdminUsername: 'mobileadmin', Yunsevo__AdminPassword: ownerPassword,
+  Yunsevo__DataPath: path.join(root, 'server'), Yunsevo__ApiKeyFile: path.join(root, 'key.txt'), Yunsevo__InstallationFile: path.join(root, 'settings.json'), Logging__LogLevel__Default: 'Warning' });
+const server = spawn(path.resolve(process.env.YUNSEVO_TEST_SERVER_EXE ?? 'artifacts/mobile-update/server/Yunsevo.Server.exe'), [], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let serverLog = ''; server.stdout.on('data', b => serverLog += b); server.stderr.on('data', b => serverLog += b);
 let headers;
 const request = async (route, method = 'GET', body = null) => {
@@ -101,6 +101,28 @@ try {
   await input('服务器地址', url, 12); await input('用户名', 'photographer'); await input('密码', password);
   const ime = await adb('shell','dumpsys','input_method'); if(/mInputShown=true|isInputViewShown=true/.test(ime)) await adb('shell','input','keyevent','4'); await click('登录');
   await waitNode('我的文件'); assert(true, 'Android login opens the authorized cloud workspace');
+  const packageInfo = await adb('shell','dumpsys','package','app.yunsevo.drive');
+  assert(packageInfo.includes('versionName=1.4.0'), 'The renamed Android 1.4.0 package is running');
+  assert(!(await nodes()).some(x => x.text?.includes('三维扫描')), 'Android has no 3D capture or synthesis entry');
+  if (process.env.YUNSEVO_ANDROID_MODEL_ONLY === '1') {
+    const bytes=await readFile('tests/fixtures/colored-box.glb');
+    const uploaded=await fetch(url+'/api/content?path='+encodeURIComponent(project.path+'/existing.glb'),{method:'PUT',headers:{...headers,'If-None-Match':'*'},body:bytes});
+    assert(uploaded.ok,'Existing GLB fixture uploads through the standard cloud file API');
+    await click('本机已有 3D 模型');
+    await waitNode('暂无本机模型。云端 GLB 文件可在“我的文件”中打开、保存或分享。');
+    assert(true,'Read-only local model browser opens without a generation engine');
+    await adb('shell','input','keyevent','4');
+    await click('▣  /个人');await click('▣  示范工程');await click('▤  existing.glb');
+    await waitNode('自动环绕',60000);
+    await until(async()=>!(await nodes()).some(x=>x.text?.includes('正在加载')),'GLB load');
+    await screenshot('model-mobile-before');
+    assert(!(await nodes()).some(x=>x.text?.includes('无法打开文件')||x.text?.includes('模型加载失败')||x.text?.includes('模型无法预览')),'Cloud GLB opens in the packaged offline model viewer');
+    await click('自动环绕');await waitNode('停止环绕');await delay(1800);await screenshot('model-mobile-orbit');
+    assert(true,'Android model viewer starts automatic orbit');
+    await click('复位');await waitNode('自动环绕');assert(true,'Android model viewer resets and stops automatic orbit');
+    await adb('shell','input','swipe','420','800','780','1000','500');await screenshot('model-mobile-rotated');
+    await click('分享');await delay(500);assert((await adb('shell','dumpsys','activity','activities')).includes('ChooserActivity'),'Existing GLB can be shared through the Android file provider');await adb('shell','input','keyevent','4');
+  } else {
   await screenshot('02-files');
   await until(async()=>(await nodes()).some(x=>x.text?.includes('网络：Wi-Fi')),'current Wi-Fi transport');
   assert(true,'Network status recognizes the active Wi-Fi connection');
@@ -248,10 +270,11 @@ try {
   assert((await adb('shell','dumpsys','activity','activities')).includes('ChooserActivity'),'Cloud photograph opens the Android share chooser with a granted file URI');
   await adb('shell','input','keyevent','4');
 
+  }
   assert(!(await adb('logcat','-d','-b','crash')).includes('Process: app.yunsevo.drive'),'Repeated camera captures and gallery navigation complete without an application crash');
   assert(!(await adb('shell','dumpsys','activity','lastanr')).includes('app.yunsevo.drive'),'Camera, automatic backup, incoming sharing and preview complete without an application ANR');
-  await writeFile(path.join(root, 'verification.json'), JSON.stringify({ checks, serial, androidApi: 35, nativeServer: true, releaseMonoAot: process.env.MYPAN_ANDROID_RELEASE === '1',
-    apkVersion: '1.2.0', apkSha256: createHash('sha256').update(await readFile(process.env.MYPAN_ANDROID_APK ?? 'artifacts/mobile/android-x64/yunsevo-android-x64.apk')).digest('hex') }, null, 2));
+  await writeFile(path.join(root, 'verification.json'), JSON.stringify({ checks, serial, androidApi: 35, nativeServer: true, releaseMonoAot: process.env.YUNSEVO_ANDROID_RELEASE === '1',
+    apkVersion: packageInfo.match(/versionName=(\S+)/)?.[1], apkSha256: createHash('sha256').update(await readFile(process.env.YUNSEVO_ANDROID_APK ?? 'artifacts/mobile/android-x64/yunsevo-android-x64.apk')).digest('hex') }, null, 2));
   console.log('ALL PASSED: ' + checks.length + ' Android device checks. ' + root);
 } catch (error) {
   try { await screenshot('failure'); } catch {}

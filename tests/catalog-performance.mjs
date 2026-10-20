@@ -21,7 +21,7 @@ const results=[];
 for(const [label,exe] of [['before',args.before],['after',args.after]]){
   const base=path.join(root,label),data=path.join(base,'data'); await mkdir(data,{recursive:true}); await writeFile(path.join(data,'catalog.json'),JSON.stringify(state));
   const socket=net.createServer();await new Promise(resolve=>socket.listen(0,'127.0.0.1',resolve));const port=socket.address().port;await new Promise(resolve=>socket.close(resolve));const url='http://127.0.0.1:'+port;
-  const env={...process.env,ASPNETCORE_URLS:url,MyPan__ApiKey:password,MyPan__ApiKeyFile:path.join(base,'key.txt'),MyPan__InstallationFile:path.join(base,'settings.json'),MyPan__DataPath:data,Logging__LogLevel__Default:'Warning'};
+  const env={...process.env,ASPNETCORE_URLS:url,Yunsevo__ApiKey:password,Yunsevo__ApiKeyFile:path.join(base,'key.txt'),Yunsevo__InstallationFile:path.join(base,'settings.json'),Yunsevo__DataPath:data,Logging__LogLevel__Default:'Warning'};
   const server=spawn(exe,[],{env,windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';server.stdout.on('data',bytes=>{log+=bytes});server.stderr.on('data',bytes=>{log+=bytes});
   try{
     let ready=false;for(let attempt=0;attempt<150;attempt++){if(server.exitCode!==null)throw new Error(label+' server exited');try{if((await fetch(url+'/health')).ok){ready=true;break;}}catch{}await delay(100);}if(!ready)throw new Error('Startup timeout');

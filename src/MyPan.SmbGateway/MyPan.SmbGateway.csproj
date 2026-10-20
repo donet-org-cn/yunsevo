@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><IsAotCompatible>false</IsAotCompatible><PublishAot>false</PublishAot><PublishTrimmed>false</PublishTrimmed></PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="SMBLibrary.Adapters" Version="1.5.8" />
-    <ProjectReference Include="../MyPan.Contracts/MyPan.Contracts.csproj" />
-  </ItemGroup>
-  <ItemGroup><None Update="Notices/**/*" CopyToPublishDirectory="PreserveNewest" /><None Include="../../THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
-</Project>

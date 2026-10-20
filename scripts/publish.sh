@@ -10,19 +10,19 @@ output="${2:-artifacts/v2/$rid}"
 export AVALONIA_TELEMETRY_OPTOUT=1
 for name in Server Desktop Headless; do
   case "$name" in Server) folder=server ;; Desktop) folder=desktop ;; Headless) folder=headless ;; esac
-  dotnet publish "src/MyPan.$name" -c Release -r "$rid" -o "$output/$folder" --configfile NuGet.Config
+  dotnet publish "src/Yunsevo.$name" -c Release -r "$rid" -o "$output/$folder" --configfile NuGet.Config
 done
-dotnet publish src/MyPan.SmbGateway -c Release -r "$rid" --self-contained true -p:PublishAot=false -o "$output/server/smb" --configfile NuGet.Config
+dotnet publish src/Yunsevo.SmbGateway -c Release -r "$rid" --self-contained true -p:PublishAot=false -o "$output/server/smb" --configfile NuGet.Config
 if [[ "$rid" == osx-* ]]; then
-  mkdir -p "$output/MyPan.app/Contents/MacOS"
-  cp -R "$output/desktop/." "$output/MyPan.app/Contents/MacOS/"
-  cp packaging/macos/Info.plist "$output/MyPan.app/Contents/Info.plist"
+  mkdir -p "$output/Yunsevo.app/Contents/MacOS"
+  cp -R "$output/desktop/." "$output/Yunsevo.app/Contents/MacOS/"
+  cp packaging/macos/Info.plist "$output/Yunsevo.app/Contents/Info.plist"
 fi
 cp packaging/release/CLIENT.md "$output/desktop/README.md"
 cp packaging/release/HEADLESS.md "$output/headless/README.md"
-cp THIRD-PARTY-NOTICES.md packaging/linux/client.example.json packaging/linux/client.env.example packaging/linux/mypan-sync.service "$output/headless/"
-if [[ "$rid" == linux-* ]]; then cp packaging/linux/mypan.desktop "$output/desktop/"; fi
-if [[ "$rid" == osx-* ]]; then cp packaging/release/CLIENT.md "$output/MyPan.app/Contents/MacOS/README.md"; fi
+cp THIRD-PARTY-NOTICES.md packaging/linux/client.example.json packaging/linux/client.env.example packaging/linux/yunsevo-sync.service "$output/headless/"
+if [[ "$rid" == linux-* ]]; then cp packaging/linux/yunsevo.desktop "$output/desktop/"; fi
+if [[ "$rid" == osx-* ]]; then cp packaging/release/CLIENT.md "$output/Yunsevo.app/Contents/MacOS/README.md"; fi
 # tar preserves executable permissions. Package only runtime files and release notices.
 mkdir -p "$output/server/downloads"
 for kind in desktop headless; do
@@ -31,7 +31,7 @@ for kind in desktop headless; do
   prefix=yunsevo-headless
   if [[ "$kind" == desktop ]]; then
     prefix=yunsevo-drive
-    if [[ "$rid" == osx-* ]]; then source="$output/MyPan.app"; archive_root="$output"; fi
+    if [[ "$rid" == osx-* ]]; then source="$output/Yunsevo.app"; archive_root="$output"; fi
   fi
   target="$(cd "$output/server/downloads" && pwd)/$prefix-$rid.tar.gz"
   source="$(cd "$source" && pwd)"
@@ -43,7 +43,7 @@ for kind in desktop headless; do
       case "$relative" in data/*|credentials/*|state/*|activity/*|*.dSYM/*) continue ;; esac
       name="${file##*/}"
       case "$relative" in Notices/*|*/Notices/*) printf '%s\n' "${file#"$archive_root"/}"; continue ;; esac
-      case "$name" in MyPan.Desktop|MyPan.Headless|README.md|client.example.json|client.env.example|mypan-sync.service|mypan.desktop|THIRD-PARTY-NOTICES.md|*.dll|*.so|*.so.[0-9]*|*.dylib|*.plist|*.icns|*.runtimeconfig.json|*.deps.json) printf '%s\n' "${file#"$archive_root"/}" ;; esac
+      case "$name" in Yunsevo.Desktop|Yunsevo.Headless|README.md|client.example.json|client.env.example|yunsevo-sync.service|yunsevo.desktop|THIRD-PARTY-NOTICES.md|*.dll|*.so|*.so.[0-9]*|*.dylib|*.plist|*.icns|*.runtimeconfig.json|*.deps.json) printf '%s\n' "${file#"$archive_root"/}" ;; esac
     done | tar -czf "$target.partial" -T -
   )
   mv "$target.partial" "$target"

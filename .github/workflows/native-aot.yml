@@ -35,14 +35,14 @@ jobs:
         run: bash scripts/publish.sh '${{ matrix.rid }}' 'artifacts/v2/${{ matrix.rid }}'
       - name: Archive Unix packages with executable permissions
         if: runner.os != 'Windows'
-        run: tar -czf 'artifacts/MyPan-${{ matrix.rid }}.tar.gz' -C 'artifacts/v2/${{ matrix.rid }}' .
+        run: tar -czf 'artifacts/Yunsevo-${{ matrix.rid }}.tar.gz' -C 'artifacts/v2/${{ matrix.rid }}' .
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:
-          name: MyPan-${{ matrix.rid }}
+          name: Yunsevo-${{ matrix.rid }}
           path: artifacts/v2/${{ matrix.rid }}/
       - uses: actions/upload-artifact@v4
         if: runner.os != 'Windows'
         with:
-          name: MyPan-${{ matrix.rid }}
-          path: artifacts/MyPan-${{ matrix.rid }}.tar.gz
+          name: Yunsevo-${{ matrix.rid }}
+          path: artifacts/Yunsevo-${{ matrix.rid }}.tar.gz

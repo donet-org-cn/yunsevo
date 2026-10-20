@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][ValidateSet('win-x64','win-arm64','linux-x64','linux-arm64','osx-x64','osx-arm64')][string]$Runtime,
     [string]$Output = 'artifacts/v2'
 )
@@ -16,12 +16,12 @@ foreach ($kind in @('desktop', 'headless')) {
     $target = Join-Path $downloads "$prefix-$Runtime$extension"
     $temporary = "$target.partial"
     $archiveRoot = $source
-    if ($Runtime.StartsWith('osx-') -and $kind -eq 'desktop') { $archiveRoot = $destination; $source = Join-Path $destination 'MyPan.app' }
+    if ($Runtime.StartsWith('osx-') -and $kind -eq 'desktop') { $archiveRoot = $destination; $source = Join-Path $destination 'Yunsevo.app' }
     $files = @(Get-ChildItem -LiteralPath $source -File -Recurse | Where-Object {
         $relative = $_.FullName.Substring($source.Length + 1).Replace('\', '/')
         # Only runtime files and release notices; never settings, credentials or debug symbols.
         $relative -notmatch '(^|/)(data|credentials|state|activity|[^/]+\.dSYM)(/|$)' -and
-        ($relative -match '(^|/)Notices/' -or $_.Name -match '^(MyPan\.(Desktop|Headless)(\.exe)?|README\.md|client\.example\.json|client\.env\.example|mypan-sync\.service|mypan\.desktop|THIRD-PARTY-NOTICES\.md|.*\.(dll|so(\.[0-9.]+)?|dylib|plist|icns|runtimeconfig\.json|deps\.json))$')
+        ($relative -match '(^|/)Notices/' -or $_.Name -match '^(Yunsevo\.(Desktop|Headless)(\.exe)?|README\.md|client\.example\.json|client\.env\.example|yunsevo-sync\.service|yunsevo\.desktop|THIRD-PARTY-NOTICES\.md|.*\.(dll|so(\.[0-9.]+)?|dylib|plist|icns|runtimeconfig\.json|deps\.json))$')
     })
     if ($files.Count -eq 0) { throw "No runtime files in $source" }
     try {

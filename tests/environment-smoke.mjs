@@ -16,10 +16,10 @@ const photon=createServer((req,res)=>{count++;agent=req.headers['user-agent'];ta
 await new Promise(r=>photon.listen(0,'127.0.0.1',r));
 const allocator=createServer();await new Promise(r=>allocator.listen(0,'127.0.0.1',r));const port=allocator.address().port;await new Promise(r=>allocator.close(r));
 const url='http://127.0.0.1:'+port, key=randomBytes(32).toString('hex'), password=randomBytes(24).toString('hex');
-const env={...process.env};for(const name of Object.keys(env))if(name.toLowerCase().startsWith('mypan__'))delete env[name];
-Object.assign(env,{ASPNETCORE_URLS:url,MyPan__UnattendedSetup:'true',MyPan__AdminUsername:'owner',MyPan__AdminPassword:password,
-  MyPan__ApiKey:key,MyPan__ApiKeyFile:path.join(root,'api-key.txt'),MyPan__DataPath:path.join(root,'data'),MyPan__InstallationFile:path.join(root,'installation.json'),Logging__LogLevel__Default:'Warning'});
-const server=spawn(path.resolve('artifacts/mobile-update/server/MyPan.Server.exe'),[],{env,windowsHide:true,stdio:['ignore','pipe','pipe']});
+const env={...process.env};for(const name of Object.keys(env))if(name.toLowerCase().startsWith('yunsevo__'))delete env[name];
+Object.assign(env,{ASPNETCORE_URLS:url,Yunsevo__UnattendedSetup:'true',Yunsevo__AdminUsername:'owner',Yunsevo__AdminPassword:password,
+  Yunsevo__ApiKey:key,Yunsevo__ApiKeyFile:path.join(root,'api-key.txt'),Yunsevo__DataPath:path.join(root,'data'),Yunsevo__InstallationFile:path.join(root,'installation.json'),Logging__LogLevel__Default:'Warning'});
+const server=spawn(path.resolve('artifacts/mobile-update/server/Yunsevo.Server.exe'),[],{env,windowsHide:true,stdio:['ignore','pipe','pipe']});
 let log='';server.stdout.on('data',b=>log+=b);server.stderr.on('data',b=>log+=b);
 const checks=[], assert=(value,label)=>{if(!value)throw new Error(label);checks.push(label);console.log('PASS: '+label);};
 const request=(route,method='GET',body)=>fetch(url+route,{method,headers:{Authorization:'Bearer '+key,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});

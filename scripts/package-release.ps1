@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory=$true)][ValidateSet('win-x64','win-arm64','linux-x64','linux-arm64','osx-x64','osx-arm64')][string]$Runtime,
     [Parameter(Mandatory=$true)][string]$PublishRoot,
     [string]$Destination='artifacts/release'
@@ -48,11 +48,11 @@ function New-RuntimeArchive([string]$Source, [string]$Target, [string]$EntryPatt
     }
 }
 
-New-RuntimeArchive (Join-Path $publish 'server') (Join-Path $destinationPath "yunsevo-server-$Runtime$extension") '^MyPan\.(Server|SmbGateway)(\.exe)?$'
+New-RuntimeArchive (Join-Path $publish 'server') (Join-Path $destinationPath "yunsevo-server-$Runtime$extension") '^Yunsevo\.(Server|SmbGateway)(\.exe)?$'
 foreach ($prefix in @('yunsevo-drive','yunsevo-headless')) {
     Copy-Item -LiteralPath (Join-Path $publish "server/downloads/$prefix-$Runtime$extension") -Destination $destinationPath -Force
 }
 if ($Runtime.StartsWith('win-')) {
-    New-RuntimeArchive (Join-Path $publish 'windows-client') (Join-Path $destinationPath "yunsevo-legacy-client-$Runtime.zip") '^MyPan\.Client(\.exe)?$'
+    New-RuntimeArchive (Join-Path $publish 'windows-client') (Join-Path $destinationPath "yunsevo-legacy-client-$Runtime.zip") '^Yunsevo\.Client(\.exe)?$'
 }
 Get-ChildItem -LiteralPath $destinationPath -File | Where-Object { $_.Name -like "*-$Runtime$extension" } | Select-Object Name,Length

@@ -26,9 +26,9 @@ Windows 按需下载共享受控的水合并发，以最多 8 MiB 的 HTTP 范�
 
 | 设置 | 默认值 | 含义 |
 | --- | --- | --- |
-| 客户端环境变量 `MYPAN_TRANSFER_CONCURRENCY` | 4 | 并发文件数，允许 1–8；机械硬盘或弱服务器可调为 1–2。 |
-| 服务端 `MyPan__MaxUploadBytes` | 20 GiB | 单文件上限，普通与分块上传均受此限制。 |
-| 服务端 `MyPan__MaxPendingUploadBytes` | 40 GiB | 未完成分块上传的声明大小总预留上限；不是预分配磁盘空间。 |
+| 客户端环境变量 `YUNSEVO_TRANSFER_CONCURRENCY` | 4 | 并发文件数，允许 1–8；机械硬盘或弱服务器可调为 1–2。 |
+| 服务端 `Yunsevo__MaxUploadBytes` | 20 GiB | 单文件上限，普通与分块上传均受此限制。 |
+| 服务端 `Yunsevo__MaxPendingUploadBytes` | 40 GiB | 未完成分块上传的声明大小总预留上限；不是预分配磁盘空间。 |
 | 服务端活动上传会话 | 每用户 8 个、全局 128 个 | 限制未完成的分块上传数量。 |
 | 服务端分块数据并发 | 8 | 同时读写的分块请求数。 |
 
@@ -36,7 +36,7 @@ Windows 按需下载共享受控的水合并发，以最多 8 MiB 的 HTTP 范�
 
 断点偏移使用两个独立校验的固定进度槽交替落盘，数据先持久化，再确认进度；槽记录中断时可退回上一份有效记录并重传最后一块，避免每块完整替换 JSON 元数据。
 
-Windows 按需上传的恢复记录位于 `%LOCALAPPDATA%/MyPanTransfers`；完整副本客户端使用状态文件旁的 `.transfers` 目录。记录不保存密码或访问令牌。完整副本下载暂存会保留，便于稍后续传；不再需要的暂存文件可在相关任务停止后清理。
+Windows 按需上传的恢复记录位于 `%LOCALAPPDATA%/YunsevoTransfers`；完整副本客户端使用状态文件旁的 `.transfers` 目录。记录不保存密码或访问令牌。完整副本下载暂存会保留，便于稍后续传；不再需要的暂存文件可在相关任务停止后清理。
 
 ## 备份与性能边界
 
@@ -47,7 +47,7 @@ Windows 按需上传的恢复记录位于 `%LOCALAPPDATA%/MyPanTransfers`；完�
 复测工具：
 
 ```powershell
-dotnet run --project tests/MyPan.PerformanceTests -c Release -- --server=F:\mypan\artifacts\v2-update\server\MyPan.Server.exe --headless=F:\mypan\artifacts\v2-update\headless\MyPan.Headless.exe --label=native --files=300 --large-mib=64
+dotnet run --project tests/Yunsevo.PerformanceTests -c Release -- --server=F:\yunsevo\artifacts\v2-update\server\Yunsevo.Server.exe --headless=F:\yunsevo\artifacts\v2-update\headless\Yunsevo.Headless.exe --label=native --files=300 --large-mib=64
 ```
 
 所有测试数据在独立 `.test-data/performance-*` 目录。基准记录时间、字节校验、同步轮次和服务端峰值工作集；Native headless 模式包含进程启动与登录时间。回环网络、磁盘及杀毒扫描会影响结果，不代表公网吞吐。最终实测值与证据见发布目录的 `verification.json`。

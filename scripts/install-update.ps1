@@ -1,4 +1,4 @@
-param()
+﻿param()
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $source = Join-Path $projectRoot 'artifacts\v2-update'
@@ -12,7 +12,7 @@ $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
 })
 if ($running.Count -gt 0) {
     $names = ($running | ForEach-Object { $_.ProcessName + ' (PID ' + $_.Id + ')' }) -join ', '
-    throw "Exit the current MyPan client from its tray menu and stop the server before installing. Running: $names"
+    throw "Exit the current Yunsevo client from its tray menu and stop the server before installing. Running: $names"
 }
 $files = @()
 foreach ($package in $packages) {
@@ -64,5 +64,5 @@ if (Test-Path -LiteralPath $verification) {
     [IO.File]::WriteAllText((Join-Path $destination 'verification.json'), $json, [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText((Join-Path $projectRoot 'artifacts\verification.json'), $json, [Text.UTF8Encoding]::new($false))
 }
-Write-Host "Updated MyPan. Previous package files: $backup"
+Write-Host "Updated Yunsevo. Previous package files: $backup"
 Write-Host 'The server data, API key and client configuration were preserved.'

@@ -3,7 +3,7 @@
 ```mermaid
 flowchart LR
     Explorer[Windows 资源管理器] -->|读取占位文件| Filter[Windows Cloud Files 驱动]
-    Filter -->|FETCH_DATA| Provider[MyPan 原生回调]
+    Filter -->|FETCH_DATA| Provider[Yunsevo 原生回调]
     Provider -->|HTTP Range| API[.NET 10 API]
     API --> Blobs[不可变文件内容]
     Provider -->|CfExecute 分块传输| Filter
@@ -12,9 +12,9 @@ flowchart LR
     API --> Catalog[原子 JSON 目录与回收站]
 ```
 
-`MyPan.Contracts` 负责公共协议、JSON 源码生成、Windows 兼容路径校验与原子写入。`MyPan.Server` 使用 ASP.NET Core Slim Minimal API，内容先流式落盘，元数据在单写锁内检查条件版本，再提交目录。快照发布后不再修改。数据目录由独占锁文件保护，禁止两个进程同时管理。
+`Yunsevo.Contracts` 负责公共协议、JSON 源码生成、Windows 兼容路径校验与原子写入。`Yunsevo.Server` 使用 ASP.NET Core Slim Minimal API，内容先流式落盘，元数据在单写锁内检查条件版本，再提交目录。快照发布后不再修改。数据目录由独占锁文件保护，禁止两个进程同时管理。
 
-`MyPan.Client` 使用 Win32 原生控件和托盘。Shell 集成通过 Windows SDK 的 WinRT 投影调用 `StorageProviderSyncRootManager`，占位文件由 `CfRegisterSyncRoot` / `CfConnectSyncRoot` / `CfCreatePlaceholders` 管理。Full hydration + AlwaysFull population 表示预先获取全部目录元数据，文件内容仍然按需下载。不是后台下载所有文件。
+`Yunsevo.Client` 使用 Win32 原生控件和托盘。Shell 集成通过 Windows SDK 的 WinRT 投影调用 `StorageProviderSyncRootManager`，占位文件由 `CfRegisterSyncRoot` / `CfConnectSyncRoot` / `CfCreatePlaceholders` 管理。Full hydration + AlwaysFull population 表示预先获取全部目录元数据，文件内容仍然按需下载。不是后台下载所有文件。
 
 非托管 FETCH_DATA 回调只复制必要数据，不保存来自 Windows 的借用指针。网络下载在后台完成，通过 `CfExecute(TRANSFER_DATA)` 传输 4 KiB 对齐数据，尾块允许结束在 EOF。请求带文件版本，禁止把其他版本的数据填入旧占位文件。CANCEL_FETCH_DATA 中断网络读取；断开连接后才释放回调上下文。
 
@@ -24,7 +24,7 @@ flowchart LR
 
 首次连接会将所选云端目录 ID 持久化，即使目录完全为空也会保存。后续若该名称不存在或已经换成另一个 ID，停止本轮同步，不返回空快照、不自动重建目录，以免误删本地文件。配置文件相邻的 `.profiles` 目录按服务器、云端逻辑路径和本地路径保存独立基线，旧版本匹配的 `.state.json` 继续复用；切换绑定不会把原基线当成另一处本地删除。云端目录是同步范围，不是权限隔离，持有同一 API 密钥的网页仍可管理全部文件。
 
-Windows 的同步根注册与 JSON 状态相互独立。连接前通过 `CfGetSyncRootInfoByPath` 读取实际注册的提供者、根文件 ID 和根身份，比较父目录的根 ID 排除“落在别的同步根内”的子目录；只更新精确匹配的 MyPan 根。根身份保存服务器和云端目录的摘要。空的旧 MyPan 根允许首次绑定或切换，非空不同绑定保留原文件并拒绝接管；旧版没有根身份的注册也能在空目录恢复。有状态而无注册时执行首次注册。设置窗口在停止旧连接前检查本地目录，注册和 Shell 设置成功后才保存新配置。
+Windows 的同步根注册与 JSON 状态相互独立。连接前通过 `CfGetSyncRootInfoByPath` 读取实际注册的提供者、根文件 ID 和根身份，比较父目录的根 ID 排除“落在别的同步根内”的子目录；只更新精确匹配的 Yunsevo 根。根身份保存服务器和云端目录的摘要。空的旧 Yunsevo 根允许首次绑定或切换，非空不同绑定保留原文件并拒绝接管；旧版没有根身份的注册也能在空目录恢复。有状态而无注册时执行首次注册。设置窗口在停止旧连接前检查本地目录，注册和 Shell 设置成功后才保存新配置。
 
 网页使用同一套目录、版本条件和回收站接口。登录后每 5 秒在可见页面刷新快照，仅在 revision 变化时重绘；输入名称、上传和执行操作期间暂停自动刷新，切回页面时立即检查。断网显示重试状态，不重复弹出错误提示。
 

@@ -18,10 +18,10 @@ Windows 示例，在服务端程序目录执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\restore-backup.ps1 -Archive D:\yunsevo-backup.zip -Destination D:\Yunsevo-Restored
-$env:MyPan__DataPath = 'D:\Yunsevo-Restored\data'
-$env:MyPan__ApiKeyFile = 'D:\Yunsevo-Restored\api-key.txt'
-Remove-Item Env:\MyPan__ApiKey -ErrorAction SilentlyContinue
-.\MyPan.Server.exe
+$env:Yunsevo__DataPath = 'D:\Yunsevo-Restored\data'
+$env:Yunsevo__ApiKeyFile = 'D:\Yunsevo-Restored\api-key.txt'
+Remove-Item Env:\Yunsevo__ApiKey -ErrorAction SilentlyContinue
+.\Yunsevo.Server.exe
 ```
 
 项目源码中的脚本位于 `scripts/restore-backup.ps1`。Linux/macOS 可使用 PowerShell 7 执行同一脚本；原生服务端程序须使用对应系统的发行包，Unix 恢复脚本尚未实机验证。

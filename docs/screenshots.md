@@ -85,34 +85,8 @@
 ![macOS Apple Silicon 原生客户端](screenshots/desktop-osx-arm64.png)
 
 
-## 三维扫描与模型（试验版）
-
-手机界面来自隔离 Android 模拟器；其 Vulkan 软件设备不会被标为硬件 GPU。Adreno 830 实机已验证 Vulkan 计算。展示的模型来自 48 张独立渲染的带纹理方盒照片，用于验证真实重建与查看链路，并非现场实拍质量样例。
-
-![手机三维采集](screenshots/mobile-3d-capture.png)
+## 3D 模型查看
 
 ![手机模型查看](screenshots/mobile-3d-viewer.png)
 
-![服务端三维任务](screenshots/server-reconstruction.png)
-
 ![服务端模型查看](screenshots/server-model.png)
-
-### 环绕视频采集与选帧（Android 1.3.1）
-
-下图来自隔离模拟器。视频由同一组合成物体视图编码，选取 41 张照片后另行完成 Vulkan 重建；相机画面为模拟器测试场景，不能代表手机实拍质量。网格仅用于构图，不写入视频。
-
-![视频自动选帧](screenshots/mobile-3d-video.png)
-
-![环绕录像与取景辅助线](screenshots/mobile-3d-video-capture.png)
-
-### 原图贴图模型（Android 1.3.2 / 服务端）
-
-同一组合成多视角照片生成的模型；文字使用照片纹理保留，不再仅靠顶点颜色。仍可见几何孔洞和部分接缝，不代表真实工程现场的重建质量。
-
-![原图投影纹理模型](screenshots/server-model-textured.png)
-
-### 手持轨迹回归（1.3.4）
-
-以下模型来自 48 张独立合成照片，包含滚转、起伏和构图偏移；全部 48 个视角完成定位。真实透明瓶和罐装物另行验收，仍有缺面，不使用私人采集照片制作公开截图。
-
-![不规则手持轨迹合成模型](screenshots/server-handheld-model.png)

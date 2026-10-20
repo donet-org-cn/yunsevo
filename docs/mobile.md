@@ -1,6 +1,6 @@
 # 沄序 · Android 手机端 1.2
 
-Android 优先实现，采用 .NET 10 原生 Android 界面；登录、队列、上传、相册去重等逻辑位于 MyPan.Mobile.Core，供后续 iPhone 端复用。当前交付不包含 iPhone 安装包。
+Android 优先实现，采用 .NET 10 原生 Android 界面；登录、队列、上传、相册去重等逻辑位于 Yunsevo.Mobile.Core，供后续 iPhone 端复用。当前交付不包含 iPhone 安装包。
 
 ## 使用流程
 
@@ -45,7 +45,7 @@ Android 使用系统 JobScheduler 周期任务、应用运行时的媒体变更�
 
 ## 构建
 
-需要 SDK 10.0.402、.NET Android 工作负载、Android SDK 36 和 JDK 21。主解决方案不依赖 Android 工作负载；手机端另用 MyPan.Mobile.slnx。
+需要 SDK 10.0.402、.NET Android 工作负载、Android SDK 36 和 JDK 21。主解决方案不依赖 Android 工作负载；手机端另用 Yunsevo.Mobile.slnx。
 
 ~~~powershell
 dotnet workload install android
@@ -62,9 +62,9 @@ Release 启用 Mono AOT，并关闭仅针对配置文件的 AOT；这与服务�
 
 CloudEntry 新增可选 origin，历史数据可继续读取；当前内容、历史版本和回收站均保留相应来源。恢复历史版本时也恢复其拍摄信息。
 
-小文件通过 X-MyPan-Photo 发送 Base64 UTF-8 JSON，大文件在 StartUpload.Metadata 中携带相同结构。服务端验证项目目录和权限，并从认证身份生成 photographer/uploadedBy；客户端上报的同名身份字段不被采信。时间、位置、设备名称属于设备上报信息，上传时间及用户身份由服务端记录。
+小文件通过 X-Yunsevo-Photo 发送 Base64 UTF-8 JSON，大文件在 StartUpload.Metadata 中携带相同结构。服务端验证项目目录和权限，并从认证身份生成 photographer/uploadedBy；客户端上报的同名身份字段不被采信。时间、位置、设备名称属于设备上报信息，上传时间及用户身份由服务端记录。
 
-原生 AOT 集成检查使用 tests/MyPan.MobileTests；Android 实际流程脚本 tests/android-smoke.mjs 仅允许 emulator-* 设备，会清空测试模拟器中的该 App 数据，不可用于实际手机。实际验证范围、截图及报告在 artifacts/mobile 下汇总。
+原生 AOT 集成检查使用 tests/Yunsevo.MobileTests；Android 实际流程脚本 tests/android-smoke.mjs 仅允许 emulator-* 设备，会清空测试模拟器中的该 App 数据，不可用于实际手机。实际验证范围、截图及报告在 artifacts/mobile 下汇总。
 
 ## 界面与验证范围
 
@@ -89,18 +89,12 @@ ARM64 包已在 Android 16 真机安装并确认登录界面正常启动。真�
 参考：[.NET Android 构建属性](https://learn.microsoft.com/dotnet/android/building-apps/build-properties)、[.NET 移动运行时与编译](https://learn.microsoft.com/dotnet/maui/deployment/runtimes-compilation?view=net-maui-10.0)、[Android 照片访问权限](https://developer.android.com/about/versions/14/changes/partial-photo-video-access)、[Android JobScheduler](https://developer.android.com/reference/android/app/job/JobInfo.Builder)。
 
 
-## 三维扫描（Android 1.3 试验版）
+## 3D 模型查看
 
-在“工程拍摄”点击“三维扫描”，选择云端目录并添加系统相册原片或引导绕拍。支持本机 Vulkan／CPU 和服务端生成，生成的 GLB 在手机与网页可旋转、缩放、分享和下载。构建顺序、运行库、数据恢复与当前质量边界见[三维扫描说明](reconstruction.md)。
+Android 1.4.0 支持在“我的文件”打开云端 GLB，旋转、缩放、保存和分享。“本机已有 3D 模型”用于查看当前账号原先保存的模型，原文件保留。离线查看器随 APK 打包，使用方式见[模型查看说明](model-viewer.md)。
 
-Android 1.3.1 新增环绕录像采集、视频自动选帧和取景网格。请移动绕物体拍摄，原地旋转不具备恢复深度所需的视差。源视频保留在应用私有扫描目录，选取照片可继续本机／云端重建，详见 [三维扫描说明](reconstruction.md#视频环绕采集)。
-
-Android 1.3.2：三维模型改用原照片投影贴图，支持精细模式和保留旧模型后重新生成。退出登录先清除本机凭据，即使断网也可立即退出；联网时尽力注销服务器令牌，最多等待两秒。离线时服务器令牌无法立即撤销，但本机不再保存或使用它。待上传文件按原账号保留，重新登录该账号可继续。登录页和“我的”页提供“关闭应用”以关闭界面；保持登录时，用户已启用的后台备份仍可继续。
+退出登录先清除本机凭据，即使断网也可立即退出；联网时尽力注销服务器令牌，最多等待两秒。离线时服务器令牌无法立即撤销，但本机不再保存或使用它。待上传文件按原账号保留，重新登录该账号可继续。登录页和“我的”页提供“关闭应用”以关闭界面；保持登录时，用户已启用的后台备份仍可继续。
 
 局域网手机测试：服务端默认 HTTP 监听全部 IPv4 网卡的 5080 端口，手机直接输入 `http://服务器内网IP:5080`，例如 `http://192.168.1.8:5080`，无需 ADB 转发。HTTP 支持本机、IPv4 私网/链路本地地址、IPv6 ULA/链路本地地址，须使用 IP 地址；公网与域名地址要求受信任 HTTPS。客户端逐请求检查地址并禁止自动重定向。HTTP 不加密，仅用于可信内网；当前测试服务器没有启用 HTTPS。
 
 Android 1.3.3 新增局域网 IP 的 HTTP 直连；登录表单支持由连接入口预填服务器和用户名，不接收密码或令牌参数，也不会自动执行登录。
-
-Android 1.3.4 改进手持视频的相机定位、中心物体对焦与选帧、录像焦距标定、CPU／Vulkan 深度估计，以及居中物体范围重建。支持正常倾斜和起伏，不要求水平绕行；透明或反光表面仍可能缺面。定位失败会用中文解释已定位数量和补拍建议，原片与源视频保留。详见[算法和验收边界](reconstruction.md#手持与视频定位改进134)。
-
-Android 1.3.7 新增手机本机“轮廓精细”：本地识别主体轮廓、联合优化相机与焦距、计算外形并投影原片贴图，不上传到识别服务，不生成式补画。普通设备仍可选“深度精细”（Vulkan／CPU）；轮廓精细目前使用 CPU，适合透明瓶身，未观察到的内凹和底部细节不是实测结果。已完成扫描也可从原视频重选最多 96 张关键照片，保存为独立版本并保留旧模型。质量与原片校验范围见[三维扫描说明](reconstruction.md#本机精细与重新选帧android-137)。

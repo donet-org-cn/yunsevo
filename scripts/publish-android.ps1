@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet('android-arm64','android-x64')][string]$Runtime='android-arm64',
     [string]$AndroidSdk=$env:ANDROID_HOME,
     [string]$JavaSdk=$env:JAVA_HOME,
@@ -22,7 +22,7 @@ try {
         $properties += @('-p:AndroidKeyStore=true', "-p:AndroidSigningKeyStore=$SigningKeyStore", "-p:AndroidSigningKeyAlias=$SigningKeyAlias",
             '-p:AndroidSigningStorePass=env:YUNSEVO_ANDROID_STORE_PASSWORD','-p:AndroidSigningKeyPass=env:YUNSEVO_ANDROID_KEY_PASSWORD')
     }
-    dotnet publish src/MyPan.Mobile.Android -c Release -r $Runtime -o $destination --configfile NuGet.Config @properties
+    dotnet publish src/Yunsevo.Mobile.Android -c Release -r $Runtime -o $destination --configfile NuGet.Config @properties
     if ($LASTEXITCODE -ne 0) { throw 'Android Mono AOT publish failed.' }
     $signed=Get-ChildItem -LiteralPath $destination -Filter '*-Signed.apk' | Select-Object -First 1
     if (!$signed) { throw 'Signed Android APK was not produced.' }
@@ -32,16 +32,9 @@ try {
     $zip=[IO.Compression.ZipFile]::OpenRead($target)
     try {
         $abi=if ($Runtime -eq 'android-arm64') { 'arm64-v8a' } else { 'x86_64' }
-        foreach ($native in @('libyunsevo_reconstruction.so','libc++_shared.so','libonnxruntime.so')) {
-            if (!$zip.GetEntry("lib/$abi/$native")) { throw "Missing reconstruction library: $native" }
-        }
         if (!$zip.GetEntry('assets/model-viewer/model-viewer.min.js')) { throw 'Missing offline model viewer.' }
-        foreach ($model in @('encoder.onnx','decoder.onnx')) {
-            $entry=$zip.GetEntry("assets/reconstruction-masks/$model")
-            if (!$entry -or $entry.Length -lt 1000000) { throw "Missing local foreground model: $model" }
-        }
-        if (!$zip.GetEntry('assets/Notices/reconstruction/LICENSE-MobileSAM.txt')) {throw 'Missing MobileSAM license.'}
-        foreach ($assembly in @('MyPan.Mobile.Android','MyPan.Mobile.Core','MyPan.Sync','MyPan.Contracts')) {
+        if ($zip.Entries | Where-Object { $_.FullName -match 'onnxruntime|reconstruction-masks|libyunsevo_reconstruction' }) { throw 'Retired generation runtime is still packaged.' }
+        foreach ($assembly in @('Yunsevo.Mobile.Android','Yunsevo.Mobile.Core','Yunsevo.Sync','Yunsevo.Contracts')) {
             $entry=$zip.GetEntry("lib/$abi/libaot-$assembly.dll.so")
             if (!$entry -or $entry.Length -lt 1000) { throw "Missing AOT native library: $assembly ($Runtime)" }
         }

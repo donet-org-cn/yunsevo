@@ -54,8 +54,8 @@ try {
     # Both absolute paths were checked against the explicitly named destination parent above.
     Move-Item -LiteralPath $stagingPath -Destination $targetPath
     Write-Output ('恢复及 SHA-256 校验完成：' + $targetPath)
-    Write-Output ('MyPan__DataPath=' + (Join-Path $targetPath 'data'))
-    Write-Output ('MyPan__ApiKeyFile=' + (Join-Path $targetPath 'api-key.txt'))
+    Write-Output ('Yunsevo__DataPath=' + (Join-Path $targetPath 'data'))
+    Write-Output ('Yunsevo__ApiKeyFile=' + (Join-Path $targetPath 'api-key.txt'))
 }
 catch {
     if (Test-Path -LiteralPath $stagingPath) { Write-Warning ('未发布恢复结果；中间目录保留于：' + $stagingPath) }

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
+    <ApplicationId>app.yunsevo.drive</ApplicationId>
+    <ApplicationTitle>沄序</ApplicationTitle>
+    <ApplicationDisplayVersion>1.4.0</ApplicationDisplayVersion>
+    <ApplicationVersion>12</ApplicationVersion>
+    <AndroidPackageFormats>apk</AndroidPackageFormats>
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Yunsevo.Mobile.Core/Yunsevo.Mobile.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <AndroidAsset Include="../Yunsevo.ModelViewer/*" Link="Assets/model-viewer/%(Filename)%(Extension)" LogicalName="model-viewer/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

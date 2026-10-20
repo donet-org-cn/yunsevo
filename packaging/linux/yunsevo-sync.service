@@ -1,0 +1,16 @@
+[Unit]
+Description=Yunsevo headless bidirectional sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/yunsevo/client.env
+ExecStart=/opt/yunsevo/headless/Yunsevo.Headless --config %h/.config/yunsevo/client.json
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

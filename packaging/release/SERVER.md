@@ -1,10 +1,10 @@
 # 沄序文件云 · 服务端
 
-解压完整目录，在可写目录运行 `MyPan.Server.exe`（Windows）或 `./MyPan.Server`（Linux/macOS）。无需安装 .NET。
+解压完整目录，在可写目录运行 `Yunsevo.Server.exe`（Windows）或 `./Yunsevo.Server`（Linux/macOS）。无需安装 .NET。
 
 默认监听全部 IPv4 地址的 5080 端口。浏览器打开 `http://服务器地址:5080`，首次启动后使用同目录 `setup-code.txt` 中的一次性安装码，设置管理员用户名、密码和空的文件存储目录。配置完成后自动进入正式服务。保存 `server-settings.json`、`api-key.txt` 和整个数据目录，升级时不要覆盖这些文件。
 
-公网部署请先配置受信任的 HTTPS，客户端跨设备登录要求 HTTPS。可通过 `ASPNETCORE_URLS` 自定义 HTTP 监听，或使用 `MyPan__CertificatePath`、`MyPan__CertificatePassword`、`MyPan__HttpsPort` 配置 TLS。请在部署环境安全注入证书密码。
+公网部署请先配置受信任的 HTTPS，客户端跨设备登录要求 HTTPS。可通过 `ASPNETCORE_URLS` 自定义 HTTP 监听，或使用 `Yunsevo__CertificatePath`、`Yunsevo__CertificatePassword`、`Yunsevo__HttpsPort` 配置 TLS。请在部署环境安全注入证书密码。
 
 `downloads/` 内含本平台的桌面和无界面客户端，登录网页自动显示下载入口。其他平台包可从同一 GitHub Release 下载，保持原文件名放进 `downloads/` 即可显示。
 

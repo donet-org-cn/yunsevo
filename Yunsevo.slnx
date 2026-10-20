@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Yunsevo.Client/Yunsevo.Client.csproj" />
+    <Project Path="src/Yunsevo.Contracts/Yunsevo.Contracts.csproj" />
+    <Project Path="src/Yunsevo.Sync/Yunsevo.Sync.csproj" />
+    <Project Path="src/Yunsevo.SmbGateway/Yunsevo.SmbGateway.csproj" />
+    <Project Path="src/Yunsevo.Desktop/Yunsevo.Desktop.csproj" />
+    <Project Path="src/Yunsevo.Headless/Yunsevo.Headless.csproj" />
+    <Project Path="src/Yunsevo.Mobile.Core/Yunsevo.Mobile.Core.csproj" />
+    <Project Path="src/Yunsevo.Server/Yunsevo.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Yunsevo.ModelTests/Yunsevo.ModelTests.csproj" />
+    <Project Path="tests/Yunsevo.PerformanceTests/Yunsevo.PerformanceTests.csproj" />
+    <Project Path="tests/Yunsevo.StoreTests/Yunsevo.StoreTests.csproj" />
+    <Project Path="tests/Yunsevo.MobileTests/Yunsevo.MobileTests.csproj" />
+    <Project Path="tests/Yunsevo.Tests/Yunsevo.Tests.csproj" />
+    <Project Path="tests/Yunsevo.V2Tests/Yunsevo.V2Tests.csproj" />
+  </Folder>
+</Solution>
