@@ -39,6 +39,7 @@ try {
             if (!$entry -or $entry.Length -lt 1000) { throw "Missing AOT native library: $assembly ($Runtime)" }
         }
     } finally { $zip.Dispose() }
+    & (Join-Path $PSScriptRoot 'verify-android-package.ps1') -Runtime $Runtime -Directory $destination -AndroidSdk $AndroidSdk -JavaSdk $JavaSdk -WriteReport
     Copy-Item -LiteralPath docs/mobile.md -Destination (Join-Path $destination 'README.md')
     $screenshots=Join-Path $destination 'screenshots'
     New-Item -ItemType Directory -Path $screenshots -Force | Out-Null

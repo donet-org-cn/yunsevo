@@ -14,8 +14,50 @@ concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 jobs:
+  android:
+    name: Verify locally signed Android packages
+    runs-on: windows-2022
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+      - name: Install APK verification tools
+        shell: pwsh
+        run: sdkmanager "build-tools;36.0.0"
+      - name: Download the signed APKs and their build records
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          for ($attempt = 0; $attempt -lt 36; $attempt++) {
+            gh release download $env:RELEASE_TAG --pattern 'yunsevo-android-*.apk' --pattern 'verification-android-*.json' --dir artifacts/android-signed --clobber
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 35) { throw 'Signed Android release inputs are missing.' }
+            Start-Sleep -Seconds 5
+          }
+      - name: Verify APK contents, versions, signing certificate and source commit
+        shell: pwsh
+        run: |
+          $commit = git rev-parse HEAD
+          foreach ($rid in @('android-arm64','android-x64')) {
+            ./scripts/verify-android-package.ps1 -Runtime $rid -Directory artifacts/android-signed -AndroidSdk $env:ANDROID_HOME -JavaSdk $env:JAVA_HOME -ExpectedCommit $commit
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-signed
+          path: artifacts/android-signed/*
+          if-no-files-found: error
   build:
     name: Native ${{ matrix.rid }}
+    needs: android
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -51,6 +93,20 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: bash scripts/publish.sh '${{ matrix.rid }}' 'artifacts/v2/${{ matrix.rid }}'
+      - name: Fetch Android APKs for server downloads
+        uses: actions/download-artifact@v4
+        with:
+          name: android-signed
+          path: artifacts/android-downloads
+      - name: Include Android downloads in every server package
+        shell: pwsh
+        env:
+          RELEASE_RID: ${{ matrix.rid }}
+        run: |
+          $target = "artifacts/v2/$env:RELEASE_RID/server/downloads"
+          foreach ($rid in @('android-arm64','android-x64')) {
+            Copy-Item -LiteralPath "artifacts/android-downloads/yunsevo-$rid.apk" -Destination $target
+          }
       - name: Package server and all clients
         shell: pwsh
         run: ./scripts/package-release.ps1 -Runtime '${{ matrix.rid }}' -PublishRoot 'artifacts/v2/${{ matrix.rid }}'
@@ -83,7 +139,7 @@ jobs:
           retention-days: 14
   release:
     name: Publish verified release
-    needs: build
+    needs: [build, android]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -96,6 +152,11 @@ jobs:
           pattern: release-*
           path: artifacts/release
           merge-multiple: true
+      - name: Fetch verified Android APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: android-signed
+          path: artifacts/release
       - name: Verify platform completeness and checksums
         shell: bash
         run: |
@@ -105,7 +166,11 @@ jobs:
             for role in server drive headless; do test -s "yunsevo-$role-$rid.$ext"; done
             test -s "verification-$rid.json"
           done
-          sha256sum *.zip *.tar.gz verification-*.json desktop-*.png > SHA256SUMS.txt
+          for rid in android-arm64 android-x64; do
+            test -s "yunsevo-$rid.apk"
+            test -s "verification-$rid.json"
+          done
+          sha256sum *.zip *.tar.gz *.apk verification-*.json desktop-*.png > SHA256SUMS.txt
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -114,6 +179,7 @@ jobs:
         run: |
           if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" artifacts/release/* --clobber
+            gh release edit "$RELEASE_TAG" --draft=false --latest --title "Yunsevo Drive $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md"
           else
             gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --title "Yunsevo Drive $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md"
           fi

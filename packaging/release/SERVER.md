@@ -6,7 +6,7 @@
 
 公网部署请先配置受信任的 HTTPS，客户端跨设备登录要求 HTTPS。可通过 `ASPNETCORE_URLS` 自定义 HTTP 监听，或使用 `Yunsevo__CertificatePath`、`Yunsevo__CertificatePassword`、`Yunsevo__HttpsPort` 配置 TLS。请在部署环境安全注入证书密码。
 
-`downloads/` 内含本平台的桌面和无界面客户端，登录网页自动显示下载入口。其他平台包可从同一 GitHub Release 下载，保持原文件名放进 `downloads/` 即可显示。
+`downloads/` 内含本平台的桌面、无界面客户端及 Android ARM64/x64 APK，登录网页自动显示下载入口。其他平台包可从同一 GitHub Release 下载，保持原文件名放进 `downloads/` 即可显示。
 
 `smb/` 为自包含的托管 .NET SMB 网关，主服务端为 Native AOT。需完整保留目录，默认文件协议均关闭，可在网页服务设置中启用。第三方许可见 `THIRD-PARTY-NOTICES.md` 和 `smb/Notices/`。
 

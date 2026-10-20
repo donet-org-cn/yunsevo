@@ -1,4 +1,4 @@
-# 沄序 · Android 手机端 1.2
+# 沄序 · Android 手机端 1.4.0
 
 Android 优先实现，采用 .NET 10 原生 Android 界面；登录、队列、上传、相册去重等逻辑位于 Yunsevo.Mobile.Core，供后续 iPhone 端复用。当前交付不包含 iPhone 安装包。
 

@@ -34,6 +34,10 @@ function New-RuntimeArchive([string]$Source, [string]$Target, [string]$EntryPatt
             foreach ($prefix in @('yunsevo-drive', 'yunsevo-headless')) {
                 Copy-Item -LiteralPath (Join-Path $publish "server/downloads/$prefix-$Runtime$extension") -Destination (Join-Path $stage 'downloads')
             }
+            foreach ($rid in @('android-arm64','android-x64')) {
+                $apk = Join-Path $publish "server/downloads/yunsevo-$rid.apk"
+                if (Test-Path -LiteralPath $apk) { Copy-Item -LiteralPath $apk -Destination (Join-Path $stage 'downloads') }
+            }
         }
         if ($extension -eq '.zip') {
             Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $Target -Force
