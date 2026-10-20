@@ -41,8 +41,8 @@ public static partial class ShellIntegration
             // The CFAPI registration is validated by SyncEngine before this call.
             if (CloudNative.QueryRegistration(path) is { IsRoot: true, ProviderName: "Yunsevo" } || existing.DisplayNameResource == ProductBrand.Product)
             {
-                // Verify an exact root without reopening its StorageFolder;
-                // Windows may fail fast when reopening active cloud roots.
+                // Verify the current user's exact root mapping before reusing
+                // an OS identity. A parent root must never be unregistered.
                 using var roots = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager\" + existing.Id + @"\UserSyncRoots");
                 if (roots?.GetValue(WindowsIdentity.GetCurrent().User!.Value) is string registered &&
                     string.Equals(Path.TrimEndingDirectorySeparator(registered), Path.TrimEndingDirectorySeparator(path), StringComparison.OrdinalIgnoreCase))
