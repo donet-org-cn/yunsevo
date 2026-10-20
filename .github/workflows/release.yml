@@ -28,9 +28,13 @@ jobs:
         with:
           distribution: microsoft
           java-version: '21'
-      - name: Install APK verification tools
+      - name: Locate the runner's preinstalled APK verification tools
         shell: pwsh
-        run: sdkmanager "build-tools;36.0.0"
+        run: |
+          $tools = Join-Path $env:ANDROID_HOME 'build-tools/36.0.0'
+          foreach ($name in @('apksigner.bat','aapt2.exe')) {
+            if (!(Test-Path -LiteralPath (Join-Path $tools $name))) { throw "Hosted Android tool is missing: $name" }
+          }
       - name: Download the signed APKs and their build records
         shell: pwsh
         env:

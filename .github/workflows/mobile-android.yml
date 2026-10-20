@@ -21,9 +21,12 @@ jobs:
           java-version: '21'
       - name: Install .NET Android workload
         run: dotnet workload install android --skip-manifest-update
-      - name: Android SDK platform
+      - name: Verify the runner's preinstalled Android SDK
         shell: pwsh
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        run: |
+          foreach ($relative in @('platforms/android-36/android.jar','build-tools/36.0.0/aapt2.exe')) {
+            if (!(Test-Path -LiteralPath (Join-Path $env:ANDROID_HOME $relative))) { throw "Hosted Android SDK component is missing: $relative" }
+          }
       - name: Publish Mono AOT development APK
         shell: pwsh
         env:
