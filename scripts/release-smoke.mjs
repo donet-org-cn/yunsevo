@@ -58,10 +58,18 @@ try {
     if (Date.now() > deadline) throw new Error('Server startup timed out');
     await delay(150);
   }
+  const loginPage = await (await fetch(url)).text();
+  assert(['android-arm64', 'android-x64'].every(target => loginPage.includes('yunsevo-' + target + '.apk')), 'Packaged login page exposes both signed Android downloads');
+  for (const target of ['android-arm64', 'android-x64']) {
+    const file = 'yunsevo-' + target + '.apk';
+    const download = await fetch(url + '/downloads/' + file, { headers: { Range: 'bytes=0-3' } });
+    assert(download.status === 206 && Buffer.from(await download.arrayBuffer()).toString('hex') === '504b0304', 'Packaged ' + target + ' download supports an exact APK range');
+  }
   assert((await fetch(url + '/api/entries')).status === 401, 'Unauthenticated cloud access is denied');
   const loginResponse = await fetch(url + '/api/auth/device/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'releaseadmin', password }) });
   assert(loginResponse.ok, 'Native server accepts the configured account');
   const login = await loginResponse.json(), headers = { Authorization: 'Bearer ' + login.accessToken };
+  assert((await fetch(url + '/api/reconstruction/jobs', { headers })).status === 404, 'Retired model-generation API is absent from the packaged server');
   const folder = '个人/releaseadmin/release-' + rid;
   assert((await fetch(url + '/api/folders', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ path: folder }) })).ok, 'Native server creates a cloud folder');
   const payload = 'Yunsevo native release: ' + rid + '\n', filePath = folder + '/cloud.txt';
