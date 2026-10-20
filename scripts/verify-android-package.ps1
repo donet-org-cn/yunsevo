@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory=$true)][string]$AndroidSdk,
     [string]$JavaSdk=$env:JAVA_HOME,
     [string]$ExpectedCommit,
+    [string]$ExpectedCertificate,
     [switch]$WriteReport
 )
 $ErrorActionPreference='Stop'
@@ -31,7 +32,8 @@ try {
     if($LASTEXITCODE -ne 0){throw 'APK manifest cannot be read.'}
 } finally {$env:JAVA_HOME=$previousJava}
 $fingerprint=($certificate | Select-String 'Signer #1 certificate SHA-256 digest: (.+)').Matches[0].Groups[1].Value.Trim()
-if($fingerprint -ne '5ed85003849d1b286d14505eeea10a004744588a029b0e02741bb7c4134f7c0c'){throw 'Retained Android update signing certificate does not match.'}
+if($fingerprint -notmatch '^[0-9a-f]{64}$'){throw 'APK signing certificate fingerprint is missing.'}
+if($ExpectedCertificate -and $fingerprint -ne $ExpectedCertificate){throw 'Retained Android update signing certificate does not match.'}
 $projectRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $project=[xml](Get-Content -Raw -LiteralPath (Join-Path $projectRoot 'src/Yunsevo.Mobile.Android/Yunsevo.Mobile.Android.csproj'))
 $version=[string]$project.Project.PropertyGroup.ApplicationDisplayVersion
@@ -43,12 +45,12 @@ if($WriteReport){
     $commit=(git -C $projectRoot rev-parse HEAD)
     if($LASTEXITCODE -ne 0){throw 'Source commit unavailable.'}
     $report=@{rid=$Runtime;commit=$commit;version=$version;versionCode=$versionCode;sha256=$sha256;certificateSha256=$fingerprint
-        checks=@('Mono AOT libraries present','Offline viewer present','Retired generation runtime absent','Manifest version verified','APK signature verified','Retained signing certificate verified')
-        signing='Retained internal-test certificate; not a Play Store production release'}
+        checks=@('Mono AOT libraries present','Offline viewer present','Retired generation runtime absent','Manifest version verified','APK signature verified')
+        signing=$(if($fingerprint -eq '5ed85003849d1b286d14505eeea10a004744588a029b0e02741bb7c4134f7c0c'){'Retained internal-test certificate; not a Play Store production release'}else{'Custom signing certificate; distribution classification is not verified'})}
     [IO.File]::WriteAllText($reportPath,($report | ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
 }
 if($ExpectedCommit){
     $report=Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     if($report.commit -ne $ExpectedCommit -or $report.sha256 -ne $sha256 -or $report.certificateSha256 -ne $fingerprint -or $report.rid -ne $Runtime -or $report.version -ne $version -or $report.versionCode -ne $versionCode){throw 'Android build record does not match this release.'}
 }
-Write-Output "Verified $Runtime $version (code $versionCode), retained certificate, Mono AOT and offline model viewer."
+Write-Output "Verified $Runtime $version (code $versionCode), APK signature, Mono AOT and offline model viewer."

@@ -48,7 +48,7 @@ jobs:
         run: |
           $commit = git rev-parse HEAD
           foreach ($rid in @('android-arm64','android-x64')) {
-            ./scripts/verify-android-package.ps1 -Runtime $rid -Directory artifacts/android-signed -AndroidSdk $env:ANDROID_HOME -JavaSdk $env:JAVA_HOME -ExpectedCommit $commit
+            ./scripts/verify-android-package.ps1 -Runtime $rid -Directory artifacts/android-signed -AndroidSdk $env:ANDROID_HOME -JavaSdk $env:JAVA_HOME -ExpectedCommit $commit -ExpectedCertificate '5ed85003849d1b286d14505eeea10a004744588a029b0e02741bb7c4134f7c0c'
           }
       - uses: actions/upload-artifact@v4
         with:
