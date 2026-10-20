@@ -6,6 +6,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
+import { jpegMetadata } from './helpers/jpeg-metadata.mjs';
 
 const workspace = process.cwd(), serial = process.env.YUNSEVO_ANDROID_SERIAL ?? 'emulator-5554';
 if (!serial.startsWith('emulator-')) throw new Error('This destructive fixture reset is restricted to an emulator');
@@ -144,7 +145,7 @@ try {
   const photoBytes = Buffer.from(await photoResponse.arrayBuffer());
   await writeFile(path.join(root, 'watermarked-photo.jpg'), photoBytes);
   assert(photoBytes[0] === 0xff && photoBytes[1] === 0xd8 && photoBytes.length > 10000, 'The uploaded camera result is an actual JPEG image');
-  const exif = JSON.parse(await command('python', ['-c', "from PIL import Image;import json,sys;im=Image.open(sys.argv[1]);e=im.getexif();d=dict(e);d.update(e.get_ifd(34665));print(json.dumps({str(k):str(v) for k,v in d.items()}))", path.join(root,'watermarked-photo.jpg')]));
+  const { exif } = jpegMetadata(photoBytes);
   assert(exif['271'] && exif['272'] && exif['33434'] && exif['33437'] && exif['34855'] && exif['37386'] && exif['36867'], 'Watermarked JPEG retains make, model, exposure time, aperture, ISO, focal length and capture time');
   assert(exif['274'] === '1' && exif['256'] && exif['257'], 'Processed JPEG records normalized orientation and actual image dimensions');
   assert(!(await adb('shell','content','query','--uri','content://media/external/images/media','--projection','_display_name')).includes('YNS_'+photo.origin.captureId.replaceAll('-','')+'.jpg'),'Cloud-only capture does not create a system gallery copy');
@@ -165,8 +166,8 @@ try {
   await until(async()=>(await catalog()).entries.some(x=>!beforeFront.has(x.id)&&x.origin?.kind==='camera'),'front camera photograph',45000);
   const selfie=(await catalog()).entries.find(x=>!beforeFront.has(x.id)&&x.origin?.kind==='camera');const selfieFile=path.join(root,'front-camera.jpg');
   await writeFile(selfieFile,Buffer.from(await(await fetch(url+'/api/content/'+selfie.id,{headers})).arrayBuffer()));
-  const selfieSize=JSON.parse(await command('python',['-c','from PIL import Image;import json,sys;print(json.dumps(list(Image.open(sys.argv[1]).size)))',selfieFile]));
-  assert(selfieSize[1]>selfieSize[0],'Front camera saves an upright portrait JPEG after switching cameras');
+  const selfieSize=jpegMetadata(await readFile(selfieFile));
+  assert(selfieSize.height>selfieSize.width,'Front camera saves an upright portrait JPEG after switching cameras');
   await click('翻转摄像头');await delay(1200);
   await click('水印与拍摄设置'); await click('水印样式与颜色'); await click('工程卡片'); await click('简约文字'); await click('显示水印底色'); await click('字体颜色 #FFD54F'); await click('保存');
   assert(true,'Camera saves a different watermark style, transparent background and selected font color');
@@ -188,8 +189,8 @@ try {
   const landscapePhoto=()=>catalog().then(c=>c.entries.find(x=>!beforeLandscape.has(x.id)&&x.origin?.kind==='camera'&&x.path.endsWith('.jpg')));
   await until(async()=>!!await landscapePhoto(),'landscape JPEG',45000);const wide=await landscapePhoto();
   const wideFile=path.join(root,'landscape-photo.jpg');await writeFile(wideFile,Buffer.from(await(await fetch(url+'/api/content/'+wide.id,{headers})).arrayBuffer()));
-  const dimensions=JSON.parse(await command('python',['-c','from PIL import Image;import json,sys;print(json.dumps(list(Image.open(sys.argv[1]).size)))',wideFile]));
-  assert(dimensions[0]>dimensions[1],'Landscape shooting saves a correctly oriented landscape JPEG');
+  const dimensions=jpegMetadata(await readFile(wideFile));
+  assert(dimensions.width>dimensions.height,'Landscape shooting saves a correctly oriented landscape JPEG');
   assert((await adb('shell','content','query','--uri','content://media/external/images/media','--projection','_display_name')).includes('YNS_'+wide.origin.captureId.replaceAll('-','')+'.jpg'),'Cloud plus local mode automatically creates the captured photo in the system gallery');
   const wideShutter=await waitNode('拍摄，点击拍照，长按录像');await adb('shell','input','swipe',String(Math.round(wideShutter.x)),String(Math.round(wideShutter.y)),String(Math.round(wideShutter.x)),String(Math.round(wideShutter.y)),'4500');
   const landscapeMovie=()=>catalog().then(c=>c.entries.find(x=>x.id!==movie.id&&x.origin?.kind==='camera'&&x.path.endsWith('.mp4')));
