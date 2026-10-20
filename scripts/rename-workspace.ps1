@@ -12,6 +12,7 @@ $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path 
 if ($running.Count) { throw 'Stop workspace programs, builds and emulators before renaming.' }
 $parent = Split-Path -Parent $source
 Set-Location -LiteralPath $parent
+[Environment]::CurrentDirectory = $parent
 # Both absolute endpoints are checked above. No files are deleted or merged.
 Move-Item -LiteralPath $source -Destination $target
 $utf8 = [Text.UTF8Encoding]::new($false)
