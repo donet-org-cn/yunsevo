@@ -36,3 +36,4 @@ TestResults/
 Thumbs.db
 __pycache__/
 *.pyc
+tools/explorer-cleanup/backups/

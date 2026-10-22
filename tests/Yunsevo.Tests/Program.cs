@@ -43,6 +43,56 @@ try
     Assert(!CloudApi.SameRootIdentity("PreviousProduct:v1:" + binding, "Yunsevo:v1:" + new string('B', 64)) &&
         !CloudApi.SameRootIdentity("PreviousProduct:v1:short", "Yunsevo:v1:short"), "Binding migration rejects changed accounts, folders and malformed identities");
 
+    if (args.Contains("--cleanup-tool"))
+    {
+        var root = Path.Combine(testRoot, "cleanup-probe");
+        var config = new ClientConfig("http://127.0.0.1:9", Secret.Protect(key), root);
+        using var api = new CloudApi(config);
+        var placeholder = Path.Combine(root, "online-only.bin");
+        var local = Path.Combine(root, "local.txt");
+        string? cleanupShellId = null;
+        try
+        {
+            using var provider = new CloudProvider(root, api, _ => { });
+            await ShellIntegration.Register(root);
+            cleanupShellId = Windows.Storage.Provider.StorageProviderSyncRootManager.GetSyncRootInformationForFolder(
+                await Windows.Storage.StorageFolder.GetFolderFromPathAsync(root)).Id;
+            provider.Create(new(Guid.NewGuid(), "online-only.bin", false, 1024, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N")));
+            await File.WriteAllTextAsync(local, "Local file must survive Explorer entry cleanup.");
+            Assert(CloudProvider.State(placeholder).Partial, "Cleanup fixture contains an online-only placeholder");
+            var originalBytes = await File.ReadAllBytesAsync(local);
+            var id = Windows.Storage.Provider.StorageProviderSyncRootManager.GetSyncRootInformationForFolder(
+                await Windows.Storage.StorageFolder.GetFolderFromPathAsync(root)).Id;
+            var command = new ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            foreach (var value in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(workspace, "tools/explorer-cleanup/cleanup-explorer.ps1"),
+                "-Apply", "-RemovePath", root, "-BackupDirectory", Path.Combine(testRoot, "cleanup-backup") }) command.ArgumentList.Add(value);
+            using var process = Process.Start(command)!;
+            var output = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            Assert(process.ExitCode == 0, "Registry-only cleanup succeeds: " + await output + await error);
+            Assert(File.Exists(placeholder) && new FileInfo(placeholder).Length == 1024 && CloudProvider.State(placeholder).Partial,
+                "Cleanup preserves online-only placeholder, length and hydration state");
+            Assert((await File.ReadAllBytesAsync(local)).SequenceEqual(originalBytes), "Cleanup preserves local file bytes");
+            Assert(QueryRegistration(root) is { IsRoot: true }, "Sidebar cleanup preserves the filesystem cloud registration");
+            using var registered = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager\" + id);
+            Assert(registered == null, "Sidebar registry entry is removed");
+            Assert(Directory.EnumerateFiles(Path.Combine(testRoot, "cleanup-backup"), "manifest.json", SearchOption.AllDirectories).Any(), "Cleanup exports recovery metadata before removal");
+            Console.WriteLine($"ALL PASSED: {checks} checks. Artifacts: {testRoot}");
+        }
+        finally
+        {
+            // This is a disposable fixture; normal file-cloud teardown is appropriate here only.
+            SearchIndex.RemoveOwned(root);
+            CloudProvider.Unregister(root);
+            if (cleanupShellId != null)
+            {
+                using var remaining = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager\" + cleanupShellId);
+                if (remaining != null) Windows.Storage.Provider.StorageProviderSyncRootManager.Unregister(cleanupShellId);
+            }
+        }
+        return 0;
+    }
+
     using var listener = new TcpListener(IPAddress.Loopback, 0);
     listener.Start(); var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
     var url = $"http://127.0.0.1:{port}";
@@ -97,6 +147,7 @@ try
         using var response = await http.SendAsync(request); response.EnsureSuccessStatusCode();
     }
     string? cloudRoot = null;
+    string? previousShellId = null;
     SyncEngine? engine = null;
     try
     {
@@ -412,6 +463,7 @@ try
             if (args.Contains("--shell"))
             {
                 var previousId = "PreviousFixture!" + System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value + "!" + Guid.NewGuid().ToString("N");
+                previousShellId = previousId;
                 var previousFolder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(cloudRoot);
                 Windows.Storage.Provider.StorageProviderSyncRootManager.Register(new()
                 {
@@ -756,7 +808,14 @@ try
     catch { Console.Error.WriteLine(logs); throw; }
     finally
     {
+        // Keep the exact fixture identity even if registration/assertions failed,
+        // or engine disposal removed CFAPI metadata needed by folder-based lookup.
         engine?.Dispose();
+        if (previousShellId != null)
+        {
+            try { Windows.Storage.Provider.StorageProviderSyncRootManager.Unregister(previousShellId); }
+            catch (Exception ex) { Console.Error.WriteLine("Fixture shell cleanup: " + ex.Message); }
+        }
         if (cloudRoot != null)
         {
             try

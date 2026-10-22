@@ -156,6 +156,8 @@ Linux/macOS 无需安装 PowerShell，也可直接运行 `bash scripts/publish.s
 
 旧版 Windows 的命令行和 CFAPI 说明见 [旧版文档](docs/legacy-windows.md)。V2 API 补充见 [docs/api-v2.md](docs/api-v2.md)。
 
+Windows 资源管理器出现重复云盘或 `Previous fixture` 测试入口时，可运行 [云盘入口清理工具](tools/explorer-cleanup/README.md)：双击工具目录中的 `清理云盘入口.cmd`，核对默认勾选项后清理。工具会备份注册表并保护已配置的同步目录，保留本地和云端文件；命令行支持只读预览与 `-WhatIf`。
+
 ## 本次验证
 
 本次通过首次安装 34 项、Windows Explorer / CFAPI 136 项、发布程序 V2 集成 180 项、HTTPS 54 项、真实 Edge 浏览器 73 项及目录迁移恢复 61 项检查。包括安装中断与重启、自定义管理员和存储路径、分块续传、进度槽损坏恢复、并发配额、已提交回执恢复、130 文件批次及原生 Windows 大文件上传。Native AOT 桌面保留 26 项流程及 6 项进程重启恢复检查。此前 Linux x64、macOS ARM64 桌面代码编译通过；对应系统上的原生运行仍待验证。本机 AOT 对照、吞吐开销与容量边界见[同步性能说明](docs/sync-performance.md)。证据路径、二进制 SHA-256、各平台验证范围见已安装包的 [verification.json](artifacts/v2/verification.json) 或待安装包的 [verification.json](artifacts/v2-update/verification.json)。
