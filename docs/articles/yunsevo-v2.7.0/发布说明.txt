@@ -1,0 +1,53 @@
+公众号文章素材包 · Yunsevo v2.7.0
+
+article.md 为可编辑正文，images 文件夹包含 1 张公众号封面和 8 张原始界面截图，共 9 张图片，均已在正文引用。
+保留相对位置即可在支持本地图片的 Markdown 编辑器中预览。
+
+封面：
+images/00-cover.png 为横版封面，1923 × 818 像素，约 2.35:1。
+在公众号编辑器的“封面和摘要”中单独上传此图，再检查裁切效果；正文中的封面图可按排版习惯保留或移除。
+封面采用沄序的蓝绿色风格，是内置 imagegen 工具生成的宣传插画；电脑、手机为示意图，实际产品界面见正文截图。
+
+发布操作：
+1. 将 article.md 导入你使用的公众号 Markdown 排版工具，按需要调整标题、摘要和段落间距。
+2. 将 images 中的图片上传到公众号素材库或排版工具，并逐一核对正文插图。图片按正文顺序编号。
+3. 不要将私有 GitHub 仓库中的 raw 图片链接当作公众号图片地址；素材包已包含原图。
+4. 仓库仍为私有，文章末尾已注明访问要求。若以后开放访问，请自行更新该说明，当前未更改仓库可见性。
+5. 发布前检查图片在手机中的显示大小，以及文末仓库和 Release 链接。
+
+标题备选：
+用 .NET 10 做一套文件云：电脑同步、相册备份、工程水印拍照都有了
+沄序 Yunsevo v2.7.0：让电脑文件和手机工程照片进入同一套文件云
+
+摘要建议：
+基于 .NET 10 与 AOT，沄序 Yunsevo 把跨平台文件同步、网页权限管理、手机相册备份和工程水印拍摄放进同一套文件云。本文用真实截图介绍 v2.7.0，并附仓库地址与启动代码。
+
+截图说明：
+电脑截图来自项目现有演示截图，使用隔离测试账号和文件。
+手机截图来自模拟器，取景内容为测试场景，不是实际工程现场。
+08-mobile-album.png 为重新截取的真实 App 相册列表，使用独立测试服务端、演示账号与有效照片，已确认缩略图正常加载。12 条演示记录重复使用 3 张模拟器拍摄素材以展示网格，未读取用户相册或生产资料。
+部分截图为此前演示界面；正文按 v2.7.0 已实现功能撰写。
+
+图片来源：
+00-cover.png            内置 imagegen 生成，封面宣传插画
+01-server-files.png     docs/screenshots/server-files.png
+02-desktop-tasks.png    docs/screenshots/client-multiple-servers.png
+03-desktop-tray.png     docs/screenshots/client-tray.png
+04-folder-policy.png    docs/screenshots/server-folder-policy.png
+05-recycle-bin.png      docs/screenshots/server-recycle-bin.png
+06-mobile-camera.png    docs/screenshots/mobile-camera.png
+07-mobile-backup.png    .test-data/android-ui-2026-10-20T11-52-47-841Z/06-album-backup.png
+08-mobile-album.png     隔离 Android 模拟器实时截图；截图脚本 .test-data/article-album-capture.mjs
+
+封面生成提示词（内置工具模式，未使用 CLI）：
+Use case: ads-marketing
+Asset type: Chinese WeChat public account article cover, ultra-wide 2.35:1 horizontal composition, approximately 1600x680.
+Primary request: Create a polished editorial cover for the real software product 沄序 Yunsevo, a .NET 10 file cloud with computer synchronization, phone album backup and engineering watermark camera. This is cover artwork, not an app screenshot.
+Style: premium technology editorial illustration, crisp Chinese typesetting, restrained dimensional cloud and folder illustration, elegant and confident. Avoid clutter.
+Background: very light warm white with subtle pale teal geometric layers. Use the established teal, turquoise and deep navy palette. A sculpted teal cloud connects a minimal laptop, a phone and a folder with small clean sync arcs on the right. Devices are symbolic silhouettes with abstract content, never fabricated realistic app screens.
+Composition: wide landscape with generous margins; strong title on the left and cloud/device illustration on the right. Keep all copy legible and well inside the central safe area. No busy background behind text.
+Text verbatim, correctly rendered and no additional text:
+"沄序 Yunsevo"
+"电脑同步 · 相册备份 · 工程水印"
+".NET 10  /  AOT  /  v2.7.0"
+Constraints: Chinese characters must be precisely 沄序 (first character 沄, water radical plus 云), not 云序. No OneDrive or Synology branding. No QR codes, no watermark signatures, no stock-photo people, no claims of open source. Output one complete finished cover, not a collage of alternatives.
