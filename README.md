@@ -12,7 +12,7 @@ Android 手机端 1.4.0 支持全屏工程相机、拍摄时切换工程、照�
 
 ## 下载与界面
 
-服务端、桌面客户端和无界面客户端的分平台发布包见 [GitHub Releases](https://github.com/hnlyf168/yunsevo/releases)。选择对应系统与 x64/ARM64 架构：server 为服务端，drive 为桌面客户端，headless 为无界面客户端。每个发布包附带运行说明，发布页提供 SHA-256 校验与各平台检查记录。
+服务端、桌面客户端和无界面客户端的分平台发布包见 [GitHub Releases](https://github.com/donet-org-cn/yunsevo/releases)。选择对应系统与 x64/ARM64 架构：server 为服务端，drive 为桌面客户端，headless 为无界面客户端。每个发布包附带运行说明，发布页提供 SHA-256 校验与各平台检查记录。
 
 **客户端 · 多服务器、多同步目录**
 
